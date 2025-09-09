@@ -316,21 +316,6 @@ fn request_add_params(url : String, params : Array[(String, String)]) -> String 
 }
 
 ///|
-/// Enhanced query parameter builder that supports multiple values for the same key
-/// Similar to Python requests' params handling
-fn build_query_string(params : Array[(String, String)]) -> String {
-  if params.is_empty() {
-    return ""
-  }
-  params
-  .map(fn(key_value) {
-    let (key, value) = key_value
-    url_encode(key) + "=" + url_encode(value)
-  })
-  .join("&")
-}
-
-///|
 /// Parse query string into key-value pairs  
 fn parse_query_string(query : String) -> Array[(String, String)] {
   if query.is_empty() {
