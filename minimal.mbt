@@ -64,11 +64,22 @@ fn url_encode_simple(s : String) -> String {
     } else {
       // Convert to hex percent encoding
       buf.write_char('%')
-      let hex = "0123456789ABCDEF"
+      let hex_chars = [
+        '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E',
+        'F',
+      ]
       let high = (code >> 4) & 0xF
       let low = code & 0xF
-      buf.write_char(hex[high])
-      buf.write_char(hex[low])
+      if high < hex_chars.length() {
+        buf.write_char(hex_chars[high])
+      } else {
+        buf.write_char('0')
+      }
+      if low < hex_chars.length() {
+        buf.write_char(hex_chars[low])
+      } else {
+        buf.write_char('0')
+      }
     }
   }
   buf.to_string()

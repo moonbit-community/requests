@@ -1,4 +1,8 @@
 ///|
+/// Simple HTTP client for MoonBit using modern APIs
+/// This module provides basic HTTP functionality compatible with current MoonBit versions
+
+///|
 /// Simple HTTP GET request
 pub async fn simple_get(url : String) -> (Int, String) raise {
   let url_bytes = @encoding.encode(url, encoding=UTF8)
@@ -29,35 +33,46 @@ pub async fn simple_post(
 }
 
 ///|
-/// Simple URL encoding for query parameters
+/// Modern URL encoding using proper APIs
 pub fn simple_url_encode(s : String) -> String {
   let buf = StringBuilder::new()
   for ch in s {
     let code = ch.to_int()
-
     // Check if character is unreserved
-    let is_safe = (code >= 'A'.to_int() && code <= 'Z'.to_int()) ||
+    if (code >= 'A'.to_int() && code <= 'Z'.to_int()) ||
       (code >= 'a'.to_int() && code <= 'z'.to_int()) ||
       (code >= '0'.to_int() && code <= '9'.to_int()) ||
       code == '-'.to_int() ||
       code == '.'.to_int() ||
       code == '_'.to_int() ||
-      code == '~'.to_int()
-    if is_safe {
+      code == '~'.to_int() {
       buf.write_char(ch)
     } else {
-      // Simple hex encoding
-      let hex = "0123456789ABCDEF"
-      buf.write_char('%')
-      buf.write_char(hex[(code >> 4) & 0xF])
-      buf.write_char(hex[code & 0xF])
+      // Proper hex encoding
+      let high = (code >> 4) & 0xF
+      let low = code & 0xF
+      buf.write_string("%")
+      buf.write_string(
+        if high < 10 {
+          (high + '0'.to_int()).to_char().to_string()
+        } else {
+          (high - 10 + 'A'.to_int()).to_char().to_string()
+        },
+      )
+      buf.write_string(
+        if low < 10 {
+          (low + '0'.to_int()).to_char().to_string()
+        } else {
+          (low - 10 + 'A'.to_int()).to_char().to_string()
+        },
+      )
     }
   }
   buf.to_string()
 }
 
 ///|
-/// Append query parameters to URL
+/// Append query parameters to URL  
 pub fn add_params(url : String, params : Array[(String, String)]) -> String {
   if params.is_empty() {
     return url
