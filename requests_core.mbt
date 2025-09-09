@@ -5,21 +5,7 @@
 /// Request errors
 pub suberror RequestError {
   HTTPError(Int, String, String) // status, reason, url
-  ConnectionError(String)
-  Timeout(String)
 } derive(Show)
-
-///|
-/// HTTP Methods
-pub enum Method {
-  Get
-  Post
-  Put
-  Delete
-  Head
-  Options
-  Patch
-} derive(Show, Eq)
 
 ///|
 /// Simple Cookie Jar for basic cookie support
@@ -171,12 +157,12 @@ pub async fn post(
 ///|
 /// Helper functions
 fn convert_headers(headers : Array[(String, String)]) -> Array[@http.Header] {
-  headers.map(fn {
-    (name, value) =>
-      @http.Header(
-        @encoding.encode(name, encoding=UTF8),
-        @encoding.encode(value, encoding=UTF8),
-      )
+  headers.map(fn(name_value) {
+    let (name, value) = name_value
+    @http.Header(
+      @encoding.encode(name, encoding=UTF8),
+      @encoding.encode(value, encoding=UTF8),
+    )
   })
 }
 
@@ -184,23 +170,24 @@ fn convert_headers(headers : Array[(String, String)]) -> Array[@http.Header] {
 fn convert_response_headers(
   headers : Array[@http.Header],
 ) -> Array[(String, String)] {
-  headers.map(fn {
-    @http.Header(name, value) =>
-      (
-        @encoding.decode(name, encoding=UTF8) catch {
-          _ => ""
-        },
-        @encoding.decode(value, encoding=UTF8) catch {
-          _ => ""
-        },
-      )
+  headers.map(fn(header) {
+    let @http.Header(name, value) = header
+    (
+      @encoding.decode(name, encoding=UTF8) catch {
+        _ => ""
+      },
+      @encoding.decode(value, encoding=UTF8) catch {
+        _ => ""
+      },
+    )
   })
 }
 
 ///|
 fn encode_form_data(data : Array[(String, String)]) -> Bytes {
-  let encoded_pairs = data.map(fn {
-    (key, value) => url_encode(key) + "=" + url_encode(value)
+  let encoded_pairs = data.map(fn(key_value) {
+    let (key, value) = key_value
+    url_encode(key) + "=" + url_encode(value)
   })
   @encoding.encode(encoded_pairs.join("&"), encoding=UTF8)
 }
@@ -233,9 +220,9 @@ fn url_encode(s : String) -> String {
 ///|
 fn hex_char(n : Int) -> Char {
   if n < 10 {
-    (n + '0'.to_int()).to_char().or('0')
+    (n + '0'.to_int()).to_char().unwrap_or('0')
   } else {
-    (n - 10 + 'A'.to_int()).to_char().or('A')
+    (n - 10 + 'A'.to_int()).to_char().unwrap_or('A')
   }
 }
 
@@ -245,8 +232,9 @@ fn request_add_params(url : String, params : Array[(String, String)]) -> String 
     return url
   }
   let separator = if url.contains("?") { "&" } else { "?" }
-  let query_parts = params.map(fn {
-    (key, value) => url_encode(key) + "=" + url_encode(value)
+  let query_parts = params.map(fn(key_value) {
+    let (key, value) = key_value
+    url_encode(key) + "=" + url_encode(value)
   })
   url + separator + query_parts.join("&")
 }

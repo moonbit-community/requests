@@ -80,9 +80,7 @@ test "test_basic_auth" {
   let auth = basic_auth("user", "pass")
   let (name, value) = auth.to_header()
   inspect(name, content="Authorization")
-  inspect(value.starts_with("Basic "), content=(
-    #|Some("dXNlcjpwYXNz")
-  ))
+  inspect(value.strip_prefix("Basic ") != None, content="true")
 }
 
 ///|

@@ -95,9 +95,8 @@ fn main {
         error_response.raise_for_status()
         println("   This should not print")
       } catch {
-        @allwefantasy/requests.RequestError::HTTPError(code, reason, url) =>
+        @allwefantasy/requests.RequestError::HTTPError(code, reason, _url) =>
           println("   ✅ Caught expected HTTP error: \{code} \{reason}")
-        _ => println("   Unexpected error type")
       }
       println("\n🎉 All MoonBit Requests features demonstrated successfully!")
     } catch {
