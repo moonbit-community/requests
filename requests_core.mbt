@@ -5,6 +5,12 @@
 /// Request errors
 pub suberror RequestError {
   HTTPError(Int, String, String) // status, reason, url
+  ConnectionError(String) // connection-related errors
+  Timeout(String) // timeout errors
+  URLError(String) // invalid URL format
+  TooManyRedirects(String) // redirect loop or too many redirects
+  SSLError(String) // SSL/TLS related errors
+  ContentDecodingError(String) // Error decoding response content
 } derive(Show)
 
 ///|
@@ -56,9 +62,25 @@ pub fn Response::text(self : Response) -> String {
 }
 
 ///|
-pub fn Response::json(self : Response) -> Json raise {
-  let text = self.text()
-  @json.parse(text)
+/// Get response text with error handling
+pub fn Response::text_or_error(self : Response) -> String raise RequestError {
+  @encoding.decode(self.content, encoding=UTF8) catch {
+    _ =>
+      raise RequestError::ContentDecodingError(
+        "Failed to decode response content as UTF-8",
+      )
+  }
+}
+
+///|
+pub fn Response::json(self : Response) -> Json raise RequestError {
+  let text = self.text_or_error()
+  @json.parse(text) catch {
+    err =>
+      raise RequestError::ContentDecodingError(
+        "Failed to parse JSON: " + err.to_string(),
+      )
+  }
 }
 
 ///|
@@ -499,25 +521,21 @@ async fn perform_request_method(
 ) -> (@http.Response, Bytes) raise {
   // Parse URI to extract protocol, host, path
   guard uri.find(b"://") is Some(protocol_len) else {
-    raise RequestError::HTTPError(
-      400,
-      "Invalid URL format",
-      @encoding.decode(uri, encoding=UTF8) catch {
-        _ => ""
+    raise RequestError::URLError(
+      ("Invalid URL format: " + @encoding.decode(uri, encoding=UTF8)) catch {
+        _ => "<invalid encoding>"
       },
     )
   }
   let protocol = match uri[:protocol_len] {
     b"http" => @http.Protocol::Http
     b"https" => @http.Protocol::Https
-    _ =>
-      raise RequestError::HTTPError(
-        400,
-        "Unsupported protocol",
-        @encoding.decode(uri, encoding=UTF8) catch {
-          _ => ""
-        },
-      )
+    _ => {
+      let protocol_str = @encoding.decode(uri[:protocol_len], encoding=UTF8) catch {
+        _ => "<unknown>"
+      }
+      raise RequestError::URLError("Unsupported protocol: " + protocol_str)
+    }
   }
   let uri_without_protocol = uri[protocol_len + 3:]
   let (host, path) = match uri_without_protocol.find(b"/") {
@@ -526,11 +544,26 @@ async fn perform_request_method(
     None => (uri_without_protocol.to_bytes(), b"/")
   }
   let path = if path.length() == 0 { b"/" } else { path }
-  let client = @http.Client::connect(host, headers~, protocol~)
+  let client = @http.Client::connect(host, headers~, protocol~) catch {
+    err =>
+      raise RequestError::ConnectionError(
+        "Failed to connect: " + err.to_string(),
+      )
+  }
   defer client.close()
-  let response = client.request(meth, path, body)
-  let response_body = client.read_all()
-  client.shutdown()
+  let response = client.request(meth, path, body) catch {
+    err =>
+      raise RequestError::ConnectionError("Request failed: " + err.to_string())
+  }
+  let response_body = client.read_all() catch {
+    err =>
+      raise RequestError::ConnectionError(
+        "Failed to read response: " + err.to_string(),
+      )
+  }
+  client.shutdown() catch {
+    _ => () // Ignore shutdown errors
+  }
   (response, response_body)
 }
 

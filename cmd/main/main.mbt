@@ -97,6 +97,46 @@ fn main {
       } catch {
         @allwefantasy/requests.RequestError::HTTPError(code, reason, _url) =>
           println("   ✅ Caught expected HTTP error: \{code} \{reason}")
+        @allwefantasy/requests.RequestError::ConnectionError(msg) =>
+          println("   Connection error: \{msg}")
+        @allwefantasy/requests.RequestError::Timeout(msg) =>
+          println("   Timeout error: \{msg}")
+        @allwefantasy/requests.RequestError::URLError(msg) =>
+          println("   URL error: \{msg}")
+        @allwefantasy/requests.RequestError::TooManyRedirects(msg) =>
+          println("   Too many redirects: \{msg}")
+        @allwefantasy/requests.RequestError::SSLError(msg) =>
+          println("   SSL error: \{msg}")
+        @allwefantasy/requests.RequestError::ContentDecodingError(msg) =>
+          println("   Content decoding error: \{msg}")
+        _ => println("   Other error occurred")
+      }
+
+      // Test additional error types
+      println("\n🛠️ 10. Error Handling Test")
+      try {
+        let _invalid_response = @allwefantasy/requests.get(
+          "http://invalid-domain-that-does-not-exist.com",
+          None,
+          None,
+        )
+
+      } catch {
+        @allwefantasy/requests.RequestError::ConnectionError(msg) =>
+          println("   ✅ Caught connection error: \{msg}")
+        @allwefantasy/requests.RequestError::URLError(msg) =>
+          println("   ✅ Caught URL error: \{msg}")
+        @allwefantasy/requests.RequestError::HTTPError(code, reason, url) =>
+          println("   HTTP error \{code}: \{reason} for \{url}")
+        @allwefantasy/requests.RequestError::Timeout(msg) =>
+          println("   Timeout error: \{msg}")
+        @allwefantasy/requests.RequestError::TooManyRedirects(msg) =>
+          println("   Too many redirects: \{msg}")
+        @allwefantasy/requests.RequestError::SSLError(msg) =>
+          println("   SSL error: \{msg}")
+        @allwefantasy/requests.RequestError::ContentDecodingError(msg) =>
+          println("   Content decoding error: \{msg}")
+        _ => println("   Other error occurred")
       }
       // Additional HTTP Methods
       println("\n📡 9. Additional HTTP Methods")
@@ -131,6 +171,20 @@ fn main {
       println("   PATCH Status: \{patch_response.status_code}")
       println("\n🎉 All MoonBit Requests features demonstrated successfully!")
     } catch {
+      @allwefantasy/requests.RequestError::ConnectionError(msg) =>
+        println("⚠️  Connection error: \{msg}")
+      @allwefantasy/requests.RequestError::URLError(msg) =>
+        println("⚠️  URL error: \{msg}")
+      @allwefantasy/requests.RequestError::HTTPError(code, reason, url) =>
+        println("⚠️  HTTP error \{code}: \{reason} for \{url}")
+      @allwefantasy/requests.RequestError::Timeout(msg) =>
+        println("⚠️  Timeout error: \{msg}")
+      @allwefantasy/requests.RequestError::TooManyRedirects(msg) =>
+        println("⚠️  Too many redirects: \{msg}")
+      @allwefantasy/requests.RequestError::SSLError(msg) =>
+        println("⚠️  SSL error: \{msg}")
+      @allwefantasy/requests.RequestError::ContentDecodingError(msg) =>
+        println("⚠️  Content decoding error: \{msg}")
       _ =>
         println(
           "⚠️  Some network requests failed (expected in restricted environments)",
