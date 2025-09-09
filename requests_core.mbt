@@ -341,6 +341,247 @@ pub async fn Session::put(
 }
 
 ///|
+/// HTTP HEAD request
+pub async fn head(
+  url : String,
+  params : Array[(String, String)]?,
+  headers : Array[(String, String)]?,
+) -> Response raise {
+  let final_url = match params {
+    Some(p) => request_add_params(url, p)
+    None => url
+  }
+  let url_bytes = @encoding.encode(final_url, encoding=UTF8)
+  let http_headers = match headers {
+    Some(h) => convert_headers(h)
+    None => []
+  }
+  // Use perform_request_method to call other HTTP methods
+  let (response, body) = perform_request_method(
+    url_bytes,
+    @http.RequestMethod::Head,
+    http_headers,
+    @http.Body::Empty,
+  )
+  Response::{
+    status_code: response.code,
+    reason: @encoding.decode(response.reason, encoding=UTF8) catch {
+      _ => ""
+    },
+    headers: convert_response_headers(response.headers),
+    cookies: CookieJar::new(),
+    content: body,
+    url: final_url,
+  }
+}
+
+///|
+/// HTTP DELETE request
+pub async fn delete(
+  url : String,
+  headers : Array[(String, String)]?,
+) -> Response raise {
+  let url_bytes = @encoding.encode(url, encoding=UTF8)
+  let http_headers = match headers {
+    Some(h) => convert_headers(h)
+    None => []
+  }
+  let (response, body) = perform_request_method(
+    url_bytes,
+    @http.RequestMethod::Delete,
+    http_headers,
+    @http.Body::Empty,
+  )
+  Response::{
+    status_code: response.code,
+    reason: @encoding.decode(response.reason, encoding=UTF8) catch {
+      _ => ""
+    },
+    headers: convert_response_headers(response.headers),
+    cookies: CookieJar::new(),
+    content: body,
+    url,
+  }
+}
+
+///|
+/// HTTP OPTIONS request
+pub async fn options(
+  url : String,
+  headers : Array[(String, String)]?,
+) -> Response raise {
+  let url_bytes = @encoding.encode(url, encoding=UTF8)
+  let http_headers = match headers {
+    Some(h) => convert_headers(h)
+    None => []
+  }
+  let (response, body) = perform_request_method(
+    url_bytes,
+    @http.RequestMethod::Options,
+    http_headers,
+    @http.Body::Empty,
+  )
+  Response::{
+    status_code: response.code,
+    reason: @encoding.decode(response.reason, encoding=UTF8) catch {
+      _ => ""
+    },
+    headers: convert_response_headers(response.headers),
+    cookies: CookieJar::new(),
+    content: body,
+    url,
+  }
+}
+
+///|
+/// HTTP PATCH request
+pub async fn patch(
+  url : String,
+  data : Array[(String, String)]?,
+  json : Json?,
+  headers : Array[(String, String)]?,
+) -> Response raise {
+  let url_bytes = @encoding.encode(url, encoding=UTF8)
+  let base_headers = match headers {
+    Some(h) => convert_headers(h)
+    None => []
+  }
+  let (final_headers, body) = match (data, json) {
+    (Some(form_data), _) => {
+      let content_type_header = @http.Header(
+        @encoding.encode("Content-Type", encoding=UTF8),
+        @encoding.encode("application/x-www-form-urlencoded", encoding=UTF8),
+      )
+      (
+        base_headers + [content_type_header],
+        @http.Body::Fixed(encode_form_data(form_data)),
+      )
+    }
+    (_, Some(json_data)) => {
+      let content_type_header = @http.Header(
+        @encoding.encode("Content-Type", encoding=UTF8),
+        @encoding.encode("application/json", encoding=UTF8),
+      )
+      (
+        base_headers + [content_type_header],
+        @http.Body::Fixed(
+          @encoding.encode(json_data.stringify(), encoding=UTF8),
+        ),
+      )
+    }
+    _ => (base_headers, @http.Body::Empty)
+  }
+  let (response, response_body) = perform_request_method(
+    url_bytes,
+    @http.RequestMethod::Patch,
+    final_headers,
+    body,
+  )
+  Response::{
+    status_code: response.code,
+    reason: @encoding.decode(response.reason, encoding=UTF8) catch {
+      _ => ""
+    },
+    headers: convert_response_headers(response.headers),
+    cookies: CookieJar::new(),
+    content: response_body,
+    url,
+  }
+}
+
+///|
+/// Helper function to perform HTTP requests with any method
+async fn perform_request_method(
+  uri : Bytes,
+  meth : @http.RequestMethod,
+  headers : Array[@http.Header],
+  body : @http.Body,
+) -> (@http.Response, Bytes) raise {
+  // Parse URI to extract protocol, host, path
+  guard uri.find(b"://") is Some(protocol_len) else {
+    raise RequestError::HTTPError(
+      400,
+      "Invalid URL format",
+      @encoding.decode(uri, encoding=UTF8) catch {
+        _ => ""
+      },
+    )
+  }
+  let protocol = match uri[:protocol_len] {
+    b"http" => @http.Protocol::Http
+    b"https" => @http.Protocol::Https
+    _ =>
+      raise RequestError::HTTPError(
+        400,
+        "Unsupported protocol",
+        @encoding.decode(uri, encoding=UTF8) catch {
+          _ => ""
+        },
+      )
+  }
+  let uri_without_protocol = uri[protocol_len + 3:]
+  let (host, path) = match uri_without_protocol.find(b"/") {
+    Some(i) =>
+      (uri_without_protocol[:i].to_bytes(), uri_without_protocol[i:].to_bytes())
+    None => (uri_without_protocol.to_bytes(), b"/")
+  }
+  let path = if path.length() == 0 { b"/" } else { path }
+  let client = @http.Client::connect(host, headers~, protocol~)
+  defer client.close()
+  let response = client.request(meth, path, body)
+  let response_body = client.read_all()
+  client.shutdown()
+  (response, response_body)
+}
+
+///|
+/// Session HEAD request
+pub async fn Session::head(
+  self : Session,
+  url : String,
+  params : Array[(String, String)]?,
+  headers : Array[(String, String)]?,
+) -> Response raise {
+  let merged_headers = merge_session_headers(self.headers, headers)
+  head(url, params, Some(merged_headers))
+}
+
+///|
+/// Session DELETE request
+pub async fn Session::delete(
+  self : Session,
+  url : String,
+  headers : Array[(String, String)]?,
+) -> Response raise {
+  let merged_headers = merge_session_headers(self.headers, headers)
+  delete(url, Some(merged_headers))
+}
+
+///|
+/// Session OPTIONS request
+pub async fn Session::options(
+  self : Session,
+  url : String,
+  headers : Array[(String, String)]?,
+) -> Response raise {
+  let merged_headers = merge_session_headers(self.headers, headers)
+  options(url, Some(merged_headers))
+}
+
+///|
+/// Session PATCH request
+pub async fn Session::patch(
+  self : Session,
+  url : String,
+  data : Array[(String, String)]?,
+  json : Json?,
+  headers : Array[(String, String)]?,
+) -> Response raise {
+  let merged_headers = merge_session_headers(self.headers, headers)
+  patch(url, data, json, Some(merged_headers))
+}
+
+///|
 /// Merge session headers with request headers (request headers take precedence)
 fn merge_session_headers(
   session_headers : Array[(String, String)],

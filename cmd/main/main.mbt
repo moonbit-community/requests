@@ -98,6 +98,37 @@ fn main {
         @allwefantasy/requests.RequestError::HTTPError(code, reason, _url) =>
           println("   ✅ Caught expected HTTP error: \{code} \{reason}")
       }
+      // Additional HTTP Methods
+      println("\n📡 9. Additional HTTP Methods")
+
+      // HEAD request (won't have response body)
+      let head_response = @allwefantasy/requests.head(
+        "https://httpbin.org/get",
+        None,
+        None,
+      )
+      println("   HEAD Status: \{head_response.status_code}")
+      println("   HEAD Content Length: \{head_response.content.length()}")
+
+      // OPTIONS request
+      let options_response = @allwefantasy/requests.options(
+        "https://httpbin.org/",
+        None,
+      )
+      println("   OPTIONS Status: \{options_response.status_code}")
+
+      // PATCH request with JSON
+      let patch_data : Json = {
+        "update": "patch request",
+        "timestamp": "2024-01-01",
+      }
+      let patch_response = @allwefantasy/requests.patch(
+        "https://httpbin.org/patch",
+        None,
+        Some(patch_data),
+        None,
+      )
+      println("   PATCH Status: \{patch_response.status_code}")
       println("\n🎉 All MoonBit Requests features demonstrated successfully!")
     } catch {
       _ =>
