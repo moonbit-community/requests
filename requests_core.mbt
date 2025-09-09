@@ -1256,3 +1256,256 @@ test "test_cookie_jar_operations" {
   inspect(jar.get("new_session"), content="Some(\"xyz123\")")
   inspect(jar.get("preferences"), content="Some(\"dark_mode\")")
 }
+
+///|
+test "test_error_categorization" {
+  // Test different HTTP status codes
+  inspect(categorize_http_error(200, "http://example.com"), content="None")
+  inspect(categorize_http_error(201, "http://example.com"), content="None")
+  inspect(categorize_http_error(301, "http://example.com"), content="None") // Redirects not treated as errors
+
+  // Test client errors
+  let error_400 = categorize_http_error(400, "http://example.com/bad")
+  match error_400 {
+    Some(RequestError::HTTPError(code, reason, url)) => {
+      inspect(code, content="400")
+      inspect(reason, content="Bad Request")
+      inspect(url, content="http://example.com/bad")
+    }
+    _ => inspect("Unexpected error type", content="Should be HTTPError")
+  }
+
+  // Test timeout errors
+  let error_408 = categorize_http_error(408, "http://example.com/slow")
+  match error_408 {
+    Some(RequestError::Timeout(msg)) =>
+      inspect(msg, content="Request timeout (HTTP 408)")
+    _ => inspect("Unexpected error type", content="Should be Timeout")
+  }
+  let error_504 = categorize_http_error(504, "http://example.com/gateway")
+  match error_504 {
+    Some(RequestError::Timeout(msg)) =>
+      inspect(msg, content="Gateway timeout (HTTP 504)")
+    _ => inspect("Unexpected error type", content="Should be Timeout")
+  }
+}
+
+///|
+test "test_url_validation" {
+  // Test valid URLs (should not raise errors)
+  try {
+    validate_url("http://example.com")
+    validate_url("https://api.example.com/v1/users")
+    inspect("URL validation passed", content="URL validation passed")
+  } catch {
+    _ => inspect("Valid URLs failed validation", content="Should not happen")
+  }
+
+  // Test invalid URLs (should raise errors)
+  let empty_url_error = try? validate_url("")
+  match empty_url_error {
+    Err(RequestError::URLError(msg)) =>
+      inspect(msg, content="URL cannot be empty")
+    _ =>
+      inspect("Empty URL should raise URLError", content="Should be URLError")
+  }
+  let invalid_protocol_error = try? validate_url("ftp://example.com")
+  match invalid_protocol_error {
+    Err(RequestError::URLError(msg)) =>
+      inspect(msg, content="URL must start with http:// or https://")
+    _ =>
+      inspect(
+        "Invalid protocol should raise URLError",
+        content="Should be URLError",
+      )
+  }
+  let space_url_error = try? validate_url("http://example.com/path with spaces")
+  match space_url_error {
+    Err(RequestError::URLError(msg)) =>
+      inspect(msg, content="URL contains invalid characters (spaces)")
+    _ =>
+      inspect(
+        "URL with spaces should raise URLError",
+        content="Should be URLError",
+      )
+  }
+}
+
+///|
+test "test_lowercase_string" {
+  inspect(lowercase_string("HELLO"), content="hello")
+  inspect(lowercase_string("Mixed Case"), content="mixed case")
+  inspect(lowercase_string("already lowercase"), content="already lowercase")
+  inspect(lowercase_string("123ABC"), content="123abc")
+  inspect(lowercase_string(""), content="")
+  inspect(lowercase_string("àáâãäå"), content="àáâãäå") // Non-ASCII should remain unchanged
+}
+
+///|
+test "test_response_object_methods" {
+  // Create a mock response for testing
+  let response = Response::{
+    status_code: 200,
+    reason: "OK",
+    headers: [("Content-Type", "application/json")],
+    cookies: CookieJar::new(),
+    content: b"{\"message\": \"hello\"}",
+    url: "http://example.com",
+  }
+
+  // Test response methods
+  inspect(response.ok(), content="true")
+  inspect(response.text(), content="{\"message\": \"hello\"}")
+
+  // Test error response
+  let error_response = Response::{
+    status_code: 404,
+    reason: "Not Found",
+    headers: [],
+    cookies: CookieJar::new(),
+    content: b"Not found",
+    url: "http://example.com/missing",
+  }
+  inspect(error_response.ok(), content="false")
+
+  // Test raise_for_status
+  let status_error = try? error_response.raise_for_status()
+  match status_error {
+    Err(RequestError::HTTPError(code, reason, url)) => {
+      inspect(code, content="404")
+      inspect(reason, content="Not Found")
+      inspect(url, content="http://example.com/missing")
+    }
+    _ => inspect("404 should raise HTTPError", content="Should be HTTPError")
+  }
+}
+
+///|
+test "test_session_operations" {
+  // Test basic session creation
+  let session = Session::new()
+  inspect(session.headers.length(), content="0")
+  inspect(session.default_timeout_ms, content="None")
+
+  // Test session with timeout
+  let timeout_session = Session::with_timeout(5000)
+  inspect(timeout_session.default_timeout_ms, content="Some(5000)")
+}
+
+///|
+test "test_make_cookie_key" {
+  inspect(make_cookie_key(None, None, "session"), content="*:/:session")
+  inspect(
+    make_cookie_key(Some("example.com"), None, "auth"),
+    content="example.com:/:auth",
+  )
+  inspect(
+    make_cookie_key(Some("api.example.com"), Some("/v1"), "token"),
+    content="api.example.com:/v1:token",
+  )
+  inspect(
+    make_cookie_key(None, Some("/admin"), "csrf"),
+    content="*:/admin:csrf",
+  )
+}
+
+///|
+test "test_header_conversion" {
+  let headers = [
+    ("Content-Type", "application/json"),
+    ("User-Agent", "MoonBit"),
+  ]
+  let http_headers = convert_headers(headers)
+  inspect(http_headers.length(), content="2")
+
+  // Test round-trip conversion
+  let back_to_headers = convert_response_headers(http_headers)
+  inspect(back_to_headers.length(), content="2")
+  let (name0, value0) = back_to_headers[0]
+  let (name1, value1) = back_to_headers[1]
+  inspect(name0, content="Content-Type")
+  inspect(value0, content="application/json")
+  inspect(name1, content="User-Agent")
+  inspect(value1, content="MoonBit")
+}
+
+///|
+test "test_request_add_params" {
+  // Test adding params to URL without existing query string
+  let url1 = request_add_params("http://example.com/api", [("key", "value")])
+  inspect(url1, content="http://example.com/api?key=value")
+
+  // Test adding params to URL with existing query string
+  let url2 = request_add_params("http://example.com/api?existing=param", [
+    ("new", "param"),
+  ])
+  inspect(url2, content="http://example.com/api?existing=param&new=param")
+
+  // Test adding multiple params
+  let url3 = request_add_params("http://example.com/api", [
+    ("a", "1"),
+    ("b", "2"),
+  ])
+  inspect(url3, content="http://example.com/api?a=1&b=2")
+
+  // Test empty params
+  let url4 = request_add_params("http://example.com/api", [])
+  inspect(url4, content="http://example.com/api")
+}
+
+///|
+test "test_form_data_encoding" {
+  let form_data = [
+    ("name", "John Doe"),
+    ("email", "john@example.com"),
+    ("age", "30"),
+  ]
+  let encoded = encode_form_data(form_data)
+  let decoded_string = @encoding.decode(encoded, encoding=UTF8) catch {
+    _ => ""
+  }
+  inspect(
+    decoded_string,
+    content="name=John%20Doe&email=john%40example.com&age=30",
+  )
+}
+
+///|
+test "test_edge_case_cookies" {
+  // Test cookie with empty value
+  let empty_value_cookie = parse_set_cookie("session=")
+  match empty_value_cookie {
+    Some(cookie) => {
+      inspect(cookie.name, content="session")
+      inspect(cookie.value, content="")
+    }
+    None => inspect("Empty value cookie should parse", content="Should parse")
+  }
+
+  // Test cookie with special characters in value
+  let special_cookie = parse_set_cookie("data=a%3Db%26c%3Dd")
+  match special_cookie {
+    Some(cookie) => {
+      inspect(cookie.name, content="data")
+      inspect(cookie.value, content="a%3Db%26c%3Dd")
+    }
+    None =>
+      inspect("Special characters cookie should parse", content="Should parse")
+  }
+
+  // Test malformed cookie (no equals sign)
+  let malformed_cookie = parse_set_cookie("invalid_cookie_format")
+  inspect(malformed_cookie, content="None")
+
+  // Test cookie with attributes but no semicolon space
+  let no_space_cookie = parse_set_cookie("token=abc123;HttpOnly;Secure")
+  match no_space_cookie {
+    Some(cookie) => {
+      inspect(cookie.name, content="token")
+      inspect(cookie.value, content="abc123")
+      inspect(cookie.http_only, content="true")
+      inspect(cookie.secure, content="true")
+    }
+    None => inspect("No space cookie should parse", content="Should parse")
+  }
+}
