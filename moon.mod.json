@@ -10,5 +10,6 @@
   "license": "Apache-2.0",
   "keywords": ["http", "requests", "client"],
   "description": "A Python requests-like HTTP client library for MoonBit",
-  "preferred-target": "native"
+  "preferred-target": "native",
+  "warn-list": "-0015"
 }

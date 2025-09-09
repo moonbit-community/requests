@@ -22,11 +22,41 @@ pub enum Method {
 } derive(Show, Eq)
 
 ///|
+/// Simple Cookie Jar for basic cookie support
+pub struct CookieJar {
+  mut cookies : Map[String, String]
+} derive(Show)
+
+///|
+pub fn CookieJar::new() -> CookieJar {
+  CookieJar::{ cookies: Map::new() }
+}
+
+///|
+pub fn CookieJar::add(self : CookieJar, name : String, value : String) -> Unit {
+  self.cookies[name] = value
+}
+
+///|
+pub fn CookieJar::get(self : CookieJar, name : String) -> String? {
+  self.cookies.get(name)
+}
+
+///|
+/// Initialize a CookieJar with some default cookies for testing
+pub fn CookieJar::with_defaults() -> CookieJar {
+  let jar = CookieJar::new()
+  jar.add("session", "default")
+  jar
+}
+
+///|
 /// HTTP Response 
 pub struct Response {
   status_code : Int
   reason : String
   headers : Array[(String, String)]
+  cookies : CookieJar // Simple cookie jar for now
   content : Bytes
   url : String
 } derive(Show)
@@ -80,6 +110,7 @@ pub async fn get(
       _ => ""
     },
     headers: convert_response_headers(response.headers),
+    cookies: CookieJar::new(), // TODO: Parse Set-Cookie headers
     content: body,
     url: final_url,
   }
@@ -131,6 +162,7 @@ pub async fn post(
       _ => ""
     },
     headers: convert_response_headers(response.headers),
+    cookies: CookieJar::new(), // TODO: Parse Set-Cookie headers
     content: response_body,
     url,
   }
@@ -263,6 +295,7 @@ pub async fn put(
       _ => ""
     },
     headers: convert_response_headers(response.headers),
+    cookies: CookieJar::new(), // TODO: Parse Set-Cookie headers
     content: response_body,
     url,
   }
