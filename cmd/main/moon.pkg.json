@@ -1,9 +1,7 @@
 {
   "is-main": true,
   "import": [
-    {
-      "path": "allwefantasy/requests",
-      "alias": "lib"
-    }
+    "allwefantasy/requests",
+    "moonbitlang/async"
   ]
 }
