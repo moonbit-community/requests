@@ -51,7 +51,7 @@ pub fn parse_url(url : String) -> URL raise {
     Some(colon_pos) => {
       let host = host_port[0:colon_pos].to_string()
       let port_str = host_port[colon_pos + 1:].to_string()
-      let port = Some(port_str.parse()) catch { _ => None }
+      let port = port_str.to_int() catch { _ => None }
       (host, port)
     }
     None => (host_port_str, None)

@@ -130,7 +130,9 @@ pub async fn request(
           history.push(response.without_content())
 
           // Resolve the redirect URL
-          current_url = resolve_redirect_url(current_url, location)
+          current_url = resolve_redirect_url(current_url, location) catch {
+            _ => raise URLError("Failed to resolve redirect URL")
+          }
           redirect_count = redirect_count + 1
 
           // For certain status codes, change method to GET and remove body
@@ -348,7 +350,7 @@ async fn make_http_request(
   RawResponse::{
     status_code: response.code,
     reason: match response.reason {
-      Some(r) => r
+      Some(r) => @encoding.decode(r, encoding=UTF8)
       None => ""
     },
     headers: response_headers,
@@ -358,7 +360,7 @@ async fn make_http_request(
 
 ///|
 /// Resolve redirect URL (handle relative URLs)
-fn resolve_redirect_url(base_url : String, location : String) -> String {
+fn resolve_redirect_url(base_url : String, location : String) -> String raise {
   if location.starts_with("http://") || location.starts_with("https://") {
     // Absolute URL
     location
@@ -375,9 +377,8 @@ fn resolve_redirect_url(base_url : String, location : String) -> String {
     location
   } else {
     // Relative path
-    let last_slash = base_url.rev_find("/")
-    match last_slash {
-      Some(pos) => base_url[0:pos + 1] + location
+    match base_url.rev_find("/") {
+      Some(pos) => base_url[0:pos + 1].to_string() + location
       None => base_url + "/" + location
     }
   }
