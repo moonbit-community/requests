@@ -1,0 +1,8 @@
+.DS_Store
+target/
+.mooncakes/
+.moonagent/
+
+.auto-coder/
+/actions/
+/output.txt
