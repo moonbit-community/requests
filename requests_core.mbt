@@ -94,33 +94,31 @@ pub async fn post(
   headers : Array[(String, String)]?,
 ) -> Response raise {
   let url_bytes = @encoding.encode(url, encoding=UTF8)
-  let http_headers = match headers {
+  let base_headers = match headers {
     Some(h) => convert_headers(h)
     None => []
   }
-  let mut final_headers = http_headers
-  let body = match (data, json) {
+  let (final_headers, body) = match (data, json) {
     (Some(form_data), _) => {
       // Add content-type for form data
-      final_headers.push(
-        @http.Header(
-          @encoding.encode("Content-Type", encoding=UTF8),
-          @encoding.encode("application/x-www-form-urlencoded", encoding=UTF8),
-        ),
+      let content_type_header = @http.Header(
+        @encoding.encode("Content-Type", encoding=UTF8),
+        @encoding.encode("application/x-www-form-urlencoded", encoding=UTF8),
       )
-      encode_form_data(form_data)
+      (base_headers + [content_type_header], encode_form_data(form_data))
     }
     (_, Some(json_data)) => {
       // Add content-type for JSON
-      final_headers.push(
-        @http.Header(
-          @encoding.encode("Content-Type", encoding=UTF8),
-          @encoding.encode("application/json", encoding=UTF8),
-        ),
+      let content_type_header = @http.Header(
+        @encoding.encode("Content-Type", encoding=UTF8),
+        @encoding.encode("application/json", encoding=UTF8),
       )
-      @encoding.encode(json_data.stringify(), encoding=UTF8)
+      (
+        base_headers + [content_type_header],
+        @encoding.encode(json_data.stringify(), encoding=UTF8),
+      )
     }
-    _ => b""
+    _ => (base_headers, b"")
   }
   let (response, response_body) = @http.post(
     url_bytes,
@@ -219,4 +217,117 @@ fn request_add_params(url : String, params : Array[(String, String)]) -> String 
     (key, value) => url_encode(key) + "=" + url_encode(value)
   })
   url + separator + query_parts.join("&")
+}
+
+///|
+/// HTTP PUT request
+pub async fn put(
+  url : String,
+  data : Array[(String, String)]?,
+  json : Json?,
+  headers : Array[(String, String)]?,
+) -> Response raise {
+  let url_bytes = @encoding.encode(url, encoding=UTF8)
+  let base_headers = match headers {
+    Some(h) => convert_headers(h)
+    None => []
+  }
+  let (final_headers, body) = match (data, json) {
+    (Some(form_data), _) => {
+      let content_type_header = @http.Header(
+        @encoding.encode("Content-Type", encoding=UTF8),
+        @encoding.encode("application/x-www-form-urlencoded", encoding=UTF8),
+      )
+      (base_headers + [content_type_header], encode_form_data(form_data))
+    }
+    (_, Some(json_data)) => {
+      let content_type_header = @http.Header(
+        @encoding.encode("Content-Type", encoding=UTF8),
+        @encoding.encode("application/json", encoding=UTF8),
+      )
+      (
+        base_headers + [content_type_header],
+        @encoding.encode(json_data.stringify(), encoding=UTF8),
+      )
+    }
+    _ => (base_headers, b"")
+  }
+  let (response, response_body) = @http.put(
+    url_bytes,
+    body,
+    headers=final_headers,
+  )
+  Response::{
+    status_code: response.code,
+    reason: @encoding.decode(response.reason, encoding=UTF8) catch {
+      _ => ""
+    },
+    headers: convert_response_headers(response.headers),
+    content: response_body,
+    url,
+  }
+}
+
+///|
+/// Session for persistent settings and cookies
+pub struct Session {
+  headers : Array[(String, String)]
+  default_timeout : Int?
+} derive(Show)
+
+///|
+/// Create a new session
+pub fn Session::new() -> Session {
+  Session::{ headers: [], default_timeout: None }
+}
+
+///|
+/// Session GET request
+pub async fn Session::get(
+  self : Session,
+  url : String,
+  params : Array[(String, String)]?,
+  headers : Array[(String, String)]?,
+) -> Response raise {
+  let merged_headers = merge_session_headers(self.headers, headers)
+  get(url, params, Some(merged_headers))
+}
+
+///|
+/// Session POST request
+pub async fn Session::post(
+  self : Session,
+  url : String,
+  data : Array[(String, String)]?,
+  json : Json?,
+  headers : Array[(String, String)]?,
+) -> Response raise {
+  let merged_headers = merge_session_headers(self.headers, headers)
+  post(url, data, json, Some(merged_headers))
+}
+
+///|
+/// Session PUT request
+pub async fn Session::put(
+  self : Session,
+  url : String,
+  data : Array[(String, String)]?,
+  json : Json?,
+  headers : Array[(String, String)]?,
+) -> Response raise {
+  let merged_headers = merge_session_headers(self.headers, headers)
+  put(url, data, json, Some(merged_headers))
+}
+
+///|
+/// Merge session headers with request headers (request headers take precedence)
+fn merge_session_headers(
+  session_headers : Array[(String, String)],
+  request_headers : Array[(String, String)]?,
+) -> Array[(String, String)] {
+  let base = session_headers
+  match request_headers {
+    Some(req_headers) => base + req_headers
+    None => base
+  }
 }
