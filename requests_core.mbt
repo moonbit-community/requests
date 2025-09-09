@@ -3,6 +3,53 @@
 
 ///|
 /// Request errors
+
+///|
+/// Helper function to categorize HTTP status codes into error types
+fn categorize_http_error(status_code : Int, url : String) -> RequestError? {
+  match status_code {
+    // Success codes
+    code if code >= 200 && code < 300 => None
+    // Redirection codes (not errors in this context)
+    code if code >= 300 && code < 400 => None
+    // Client errors
+    400 => Some(RequestError::HTTPError(status_code, "Bad Request", url))
+    401 => Some(RequestError::HTTPError(status_code, "Unauthorized", url))
+    403 => Some(RequestError::HTTPError(status_code, "Forbidden", url))
+    404 => Some(RequestError::HTTPError(status_code, "Not Found", url))
+    408 => Some(RequestError::Timeout("Request timeout (HTTP 408)"))
+    429 => Some(RequestError::HTTPError(status_code, "Too Many Requests", url))
+    // Server errors
+    500 =>
+      Some(RequestError::HTTPError(status_code, "Internal Server Error", url))
+    502 => Some(RequestError::HTTPError(status_code, "Bad Gateway", url))
+    503 =>
+      Some(RequestError::HTTPError(status_code, "Service Unavailable", url))
+    504 => Some(RequestError::Timeout("Gateway timeout (HTTP 504)"))
+    // Generic error for other codes
+    code if code >= 400 =>
+      Some(RequestError::HTTPError(status_code, "HTTP Error", url))
+    _ => None
+  }
+}
+
+///|
+/// Helper function to validate URL format
+fn validate_url(url : String) -> Unit raise RequestError {
+  if url.is_empty() {
+    raise RequestError::URLError("URL cannot be empty")
+  }
+  if url.strip_prefix("http://") == None && url.strip_prefix("https://") == None {
+    raise RequestError::URLError("URL must start with http:// or https://")
+  }
+  // Basic validation for common URL issues
+  if url.contains(" ") {
+    raise RequestError::URLError("URL contains invalid characters (spaces)")
+  }
+}
+
+///|
+/// Request errors
 pub suberror RequestError {
   HTTPError(Int, String, String) // status, reason, url
   ConnectionError(String) // connection-related errors
@@ -103,6 +150,7 @@ pub async fn get(
   headers : Array[(String, String)]?,
   timeout_ms? : Int? = None,
 ) -> Response raise {
+  validate_url(url)
   let final_url = match params {
     Some(p) => request_add_params(url, p)
     None => url
@@ -115,11 +163,22 @@ pub async fn get(
   // TODO: Implement proper timeout support using @async.with_timeout
   // For now, we'll just use the regular HTTP call
   let _ = timeout_ms // Suppress unused warning
-  let (response, body) = @http.get(url_bytes, headers=http_headers)
+  let (response, body) = @http.get(url_bytes, headers=http_headers) catch {
+    err =>
+      raise RequestError::ConnectionError(
+        "Failed to perform GET request: " + err.to_string(),
+      )
+  }
+
+  // Check for HTTP errors and categorize them
+  match categorize_http_error(response.code, final_url) {
+    Some(error) => raise error
+    None => ()
+  }
   Response::{
     status_code: response.code,
     reason: @encoding.decode(response.reason, encoding=UTF8) catch {
-      _ => ""
+      _ => "Unknown"
     },
     headers: convert_response_headers(response.headers),
     cookies: CookieJar::new(), // TODO: Parse Set-Cookie headers
@@ -137,6 +196,7 @@ pub async fn post(
   headers : Array[(String, String)]?,
   timeout_ms? : Int? = None,
 ) -> Response raise {
+  validate_url(url)
   let url_bytes = @encoding.encode(url, encoding=UTF8)
   let base_headers = match headers {
     Some(h) => convert_headers(h)
@@ -171,11 +231,22 @@ pub async fn post(
     url_bytes,
     body,
     headers=final_headers,
-  )
+  ) catch {
+    err =>
+      raise RequestError::ConnectionError(
+        "Failed to perform POST request: " + err.to_string(),
+      )
+  }
+
+  // Check for HTTP errors and categorize them
+  match categorize_http_error(response.code, url) {
+    Some(error) => raise error
+    None => ()
+  }
   Response::{
     status_code: response.code,
     reason: @encoding.decode(response.reason, encoding=UTF8) catch {
-      _ => ""
+      _ => "Unknown"
     },
     headers: convert_response_headers(response.headers),
     cookies: CookieJar::new(), // TODO: Parse Set-Cookie headers
@@ -360,6 +431,7 @@ pub async fn put(
   headers : Array[(String, String)]?,
   timeout_ms? : Int? = None,
 ) -> Response raise {
+  validate_url(url)
   let url_bytes = @encoding.encode(url, encoding=UTF8)
   let base_headers = match headers {
     Some(h) => convert_headers(h)
@@ -392,11 +464,22 @@ pub async fn put(
     url_bytes,
     body,
     headers=final_headers,
-  )
+  ) catch {
+    err =>
+      raise RequestError::ConnectionError(
+        "Failed to perform PUT request: " + err.to_string(),
+      )
+  }
+
+  // Check for HTTP errors and categorize them
+  match categorize_http_error(response.code, url) {
+    Some(error) => raise error
+    None => ()
+  }
   Response::{
     status_code: response.code,
     reason: @encoding.decode(response.reason, encoding=UTF8) catch {
-      _ => ""
+      _ => "Unknown"
     },
     headers: convert_response_headers(response.headers),
     cookies: CookieJar::new(), // TODO: Parse Set-Cookie headers
@@ -485,6 +568,7 @@ pub async fn head(
   headers : Array[(String, String)]?,
   timeout_ms? : Int? = None,
 ) -> Response raise {
+  validate_url(url)
   let final_url = match params {
     Some(p) => request_add_params(url, p)
     None => url
@@ -502,10 +586,16 @@ pub async fn head(
     @http.Body::Empty,
     timeout_ms~,
   )
+
+  // Check for HTTP errors and categorize them
+  match categorize_http_error(response.code, final_url) {
+    Some(error) => raise error
+    None => ()
+  }
   Response::{
     status_code: response.code,
     reason: @encoding.decode(response.reason, encoding=UTF8) catch {
-      _ => ""
+      _ => "Unknown"
     },
     headers: convert_response_headers(response.headers),
     cookies: CookieJar::new(),
@@ -521,6 +611,7 @@ pub async fn delete(
   headers : Array[(String, String)]?,
   timeout_ms? : Int? = None,
 ) -> Response raise {
+  validate_url(url)
   let url_bytes = @encoding.encode(url, encoding=UTF8)
   let http_headers = match headers {
     Some(h) => convert_headers(h)
@@ -533,10 +624,16 @@ pub async fn delete(
     @http.Body::Empty,
     timeout_ms~,
   )
+
+  // Check for HTTP errors and categorize them
+  match categorize_http_error(response.code, url) {
+    Some(error) => raise error
+    None => ()
+  }
   Response::{
     status_code: response.code,
     reason: @encoding.decode(response.reason, encoding=UTF8) catch {
-      _ => ""
+      _ => "Unknown"
     },
     headers: convert_response_headers(response.headers),
     cookies: CookieJar::new(),
@@ -552,6 +649,7 @@ pub async fn options(
   headers : Array[(String, String)]?,
   timeout_ms? : Int? = None,
 ) -> Response raise {
+  validate_url(url)
   let url_bytes = @encoding.encode(url, encoding=UTF8)
   let http_headers = match headers {
     Some(h) => convert_headers(h)
@@ -564,10 +662,16 @@ pub async fn options(
     @http.Body::Empty,
     timeout_ms~,
   )
+
+  // Check for HTTP errors and categorize them
+  match categorize_http_error(response.code, url) {
+    Some(error) => raise error
+    None => ()
+  }
   Response::{
     status_code: response.code,
     reason: @encoding.decode(response.reason, encoding=UTF8) catch {
-      _ => ""
+      _ => "Unknown"
     },
     headers: convert_response_headers(response.headers),
     cookies: CookieJar::new(),
@@ -585,6 +689,7 @@ pub async fn patch(
   headers : Array[(String, String)]?,
   timeout_ms? : Int? = None,
 ) -> Response raise {
+  validate_url(url)
   let url_bytes = @encoding.encode(url, encoding=UTF8)
   let base_headers = match headers {
     Some(h) => convert_headers(h)
@@ -622,10 +727,16 @@ pub async fn patch(
     body,
     timeout_ms~,
   )
+
+  // Check for HTTP errors and categorize them
+  match categorize_http_error(response.code, url) {
+    Some(error) => raise error
+    None => ()
+  }
   Response::{
     status_code: response.code,
     reason: @encoding.decode(response.reason, encoding=UTF8) catch {
-      _ => ""
+      _ => "Unknown"
     },
     headers: convert_response_headers(response.headers),
     cookies: CookieJar::new(),
@@ -672,24 +783,44 @@ async fn perform_request_method(
   // For now, we'll just use the regular HTTP call
   let _ = timeout_ms // Suppress unused warning
   let client = @http.Client::connect(host, headers~, protocol~) catch {
-    err =>
+    err => {
+      let host_str = @encoding.decode(host, encoding=UTF8) catch {
+        _ => "<invalid host>"
+      }
       raise RequestError::ConnectionError(
-        "Failed to connect: " + err.to_string(),
+        "Failed to connect to " + host_str + ": " + err.to_string(),
       )
+    }
   }
   defer client.close()
   let response = client.request(meth, path, body) catch {
-    err =>
-      raise RequestError::ConnectionError("Request failed: " + err.to_string())
+    err => {
+      let method_str = match meth {
+        @http.RequestMethod::Get => "GET"
+        @http.RequestMethod::Post => "POST"
+        @http.RequestMethod::Put => "PUT"
+        @http.RequestMethod::Head => "HEAD"
+        @http.RequestMethod::Delete => "DELETE"
+        @http.RequestMethod::Options => "OPTIONS"
+        @http.RequestMethod::Patch => "PATCH"
+        _ => "UNKNOWN"
+      }
+      let path_str = @encoding.decode(path, encoding=UTF8) catch {
+        _ => "<invalid path>"
+      }
+      raise RequestError::ConnectionError(
+        method_str + " request to " + path_str + " failed: " + err.to_string(),
+      )
+    }
   }
   let response_body = client.read_all() catch {
     err =>
       raise RequestError::ConnectionError(
-        "Failed to read response: " + err.to_string(),
+        "Failed to read response body: " + err.to_string(),
       )
   }
   client.shutdown() catch {
-    _ => () // Ignore shutdown errors
+    _ => () // Ignore shutdown errors as they're not critical
   }
   (response, response_body)
 }
