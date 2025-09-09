@@ -61,9 +61,23 @@ pub suberror RequestError {
 } derive(Show)
 
 ///|
-/// Simple Cookie Jar for basic cookie support
+/// Cookie structure to hold cookie data with attributes
+pub struct Cookie {
+  name : String
+  value : String
+  domain : String?
+  path : String?
+  expires : String? // ISO 8601 format or HTTP-date format
+  max_age : Int? // seconds
+  secure : Bool
+  http_only : Bool
+  same_site : String? // "Strict", "Lax", or "None"
+} derive(Show, Eq)
+
+///|
+/// Enhanced Cookie Jar for comprehensive cookie support
 pub struct CookieJar {
-  mut cookies : Map[String, String]
+  mut cookies : Map[String, Cookie] // key is "domain:path:name"
 } derive(Show)
 
 ///|
@@ -72,13 +86,82 @@ pub fn CookieJar::new() -> CookieJar {
 }
 
 ///|
+/// Add a simple cookie (backward compatibility)
 pub fn CookieJar::add(self : CookieJar, name : String, value : String) -> Unit {
-  self.cookies[name] = value
+  let cookie = Cookie::{
+    name,
+    value,
+    domain: None,
+    path: None,
+    expires: None,
+    max_age: None,
+    secure: false,
+    http_only: false,
+    same_site: None,
+  }
+  let key = make_cookie_key(None, None, name)
+  self.cookies[key] = cookie
 }
 
 ///|
+/// Add a cookie with full attributes
+pub fn CookieJar::add_cookie(self : CookieJar, cookie : Cookie) -> Unit {
+  let key = make_cookie_key(cookie.domain, cookie.path, cookie.name)
+  self.cookies[key] = cookie
+}
+
+///|
+/// Get a cookie value by name (simple lookup)
 pub fn CookieJar::get(self : CookieJar, name : String) -> String? {
-  self.cookies.get(name)
+  // Simple lookup without domain/path matching for backward compatibility
+  for cookie in self.cookies.values() {
+    if cookie.name == name {
+      return Some(cookie.value)
+    }
+  }
+  None
+}
+
+///|
+/// Get a cookie by name, domain, and path
+pub fn CookieJar::get_cookie(
+  self : CookieJar,
+  name : String,
+  domain : String?,
+  path : String?,
+) -> Cookie? {
+  let key = make_cookie_key(domain, path, name)
+  self.cookies.get(key)
+}
+
+///|
+/// Helper function to create a unique key for cookie storage
+fn make_cookie_key(domain : String?, path : String?, name : String) -> String {
+  let domain_part = match domain {
+    Some(d) => d
+    None => "*"
+  }
+  let path_part = match path {
+    Some(p) => p
+    None => "/"
+  }
+  domain_part + ":" + path_part + ":" + name
+}
+
+///|
+/// Helper function to convert string to lowercase
+fn lowercase_string(s : String) -> String {
+  let buf = StringBuilder::new()
+  for i = 0; i < s.length(); i = i + 1 {
+    let ch_code = s.unsafe_charcode_at(i)
+    let lower_ch_code = if ch_code >= 'A'.to_int() && ch_code <= 'Z'.to_int() {
+      ch_code + 32
+    } else {
+      ch_code
+    }
+    buf.write_char(lower_ch_code.unsafe_to_char())
+  }
+  buf.to_string()
 }
 
 ///|
@@ -87,6 +170,124 @@ pub fn CookieJar::with_defaults() -> CookieJar {
   let jar = CookieJar::new()
   jar.add("session", "default")
   jar
+}
+
+///|
+/// Parse Set-Cookie header value and return a Cookie object
+pub fn parse_set_cookie(set_cookie_value : String) -> Cookie? {
+  if set_cookie_value.is_empty() {
+    return None
+  }
+
+  // Split by semicolon to get cookie attributes
+  let parts = set_cookie_value.split(";").to_array()
+  if parts.is_empty() {
+    return None
+  }
+
+  // First part should be name=value
+  let first_part = parts[0].to_string()
+  let (name, value) = match first_part.find("=") {
+    Some(i) => {
+      let name = first_part.substring(start=0, end=i)
+      let value = first_part.substring(start=i + 1)
+      (name, value)
+    }
+    None => return None // Invalid cookie format
+  }
+  if name.is_empty() {
+    return None
+  }
+
+  // Parse attributes
+  let mut domain : String? = None
+  let mut path : String? = None
+  let mut expires : String? = None
+  let mut max_age : Int? = None
+  let mut secure = false
+  let mut http_only = false
+  let mut same_site : String? = None
+  for i = 1; i < parts.length(); i = i + 1 {
+    let attr = parts[i].to_string()
+    if attr.is_empty() {
+      continue
+    }
+    match attr.find("=") {
+      Some(eq_pos) => {
+        let attr_name_str = attr.substring(start=0, end=eq_pos)
+        let attr_value = attr.substring(start=eq_pos + 1)
+        let attr_name = lowercase_string(attr_name_str)
+        match attr_name {
+          "domain" => domain = Some(attr_value)
+          "path" => path = Some(attr_value)
+          "expires" => expires = Some(attr_value)
+          "max-age" =>
+            // Try to parse max-age as integer, default to None if parsing fails
+            match attr_value {
+              "0" => max_age = Some(0)
+              "1" => max_age = Some(1)
+              "60" => max_age = Some(60)
+              "3600" => max_age = Some(3600)
+              "86400" => max_age = Some(86400)
+              _ => {
+                // Simple integer parsing for common cases
+                let mut result = 0
+                let mut valid = true
+                for i = 0; i < attr_value.length(); i = i + 1 {
+                  let ch = attr_value.unsafe_charcode_at(i)
+                  if ch >= '0'.to_int() && ch <= '9'.to_int() {
+                    result = result * 10 + (ch - '0'.to_int())
+                  } else {
+                    valid = false
+                    break
+                  }
+                }
+                max_age = if valid { Some(result) } else { None }
+              }
+            }
+          "samesite" => same_site = Some(attr_value)
+          _ => continue // Unknown attribute
+        }
+      }
+      None => {
+        // Boolean attributes
+        let attr_lower = lowercase_string(attr)
+        match attr_lower {
+          "secure" => secure = true
+          "httponly" => http_only = true
+          _ => continue // Unknown boolean attribute
+        }
+      }
+    }
+  }
+  Some(Cookie::{
+    name,
+    value,
+    domain,
+    path,
+    expires,
+    max_age,
+    secure,
+    http_only,
+    same_site,
+  })
+}
+
+///|
+/// Parse Set-Cookie headers from response and add to cookie jar
+pub fn CookieJar::parse_response_cookies(
+  self : CookieJar,
+  headers : Array[(String, String)],
+) -> Unit {
+  for header in headers {
+    let (name, value) = header
+    if lowercase_string(name) == "set-cookie" {
+      match parse_set_cookie(value) {
+        Some(cookie) => self.add_cookie(cookie)
+        None => continue // Invalid cookie, skip
+      }
+    }
+  }
 }
 
 ///|
@@ -175,13 +376,16 @@ pub async fn get(
     Some(error) => raise error
     None => ()
   }
+  let response_headers = convert_response_headers(response.headers)
+  let cookie_jar = CookieJar::new()
+  cookie_jar.parse_response_cookies(response_headers)
   Response::{
     status_code: response.code,
     reason: @encoding.decode(response.reason, encoding=UTF8) catch {
       _ => "Unknown"
     },
-    headers: convert_response_headers(response.headers),
-    cookies: CookieJar::new(), // TODO: Parse Set-Cookie headers
+    headers: response_headers,
+    cookies: cookie_jar,
     content: body,
     url: final_url,
   }
@@ -243,13 +447,16 @@ pub async fn post(
     Some(error) => raise error
     None => ()
   }
+  let response_headers = convert_response_headers(response.headers)
+  let cookie_jar = CookieJar::new()
+  cookie_jar.parse_response_cookies(response_headers)
   Response::{
     status_code: response.code,
     reason: @encoding.decode(response.reason, encoding=UTF8) catch {
       _ => "Unknown"
     },
-    headers: convert_response_headers(response.headers),
-    cookies: CookieJar::new(), // TODO: Parse Set-Cookie headers
+    headers: response_headers,
+    cookies: cookie_jar,
     content: response_body,
     url,
   }
@@ -476,13 +683,16 @@ pub async fn put(
     Some(error) => raise error
     None => ()
   }
+  let response_headers = convert_response_headers(response.headers)
+  let cookie_jar = CookieJar::new()
+  cookie_jar.parse_response_cookies(response_headers)
   Response::{
     status_code: response.code,
     reason: @encoding.decode(response.reason, encoding=UTF8) catch {
       _ => "Unknown"
     },
-    headers: convert_response_headers(response.headers),
-    cookies: CookieJar::new(), // TODO: Parse Set-Cookie headers
+    headers: response_headers,
+    cookies: cookie_jar,
     content: response_body,
     url,
   }
@@ -592,13 +802,16 @@ pub async fn head(
     Some(error) => raise error
     None => ()
   }
+  let response_headers = convert_response_headers(response.headers)
+  let cookie_jar = CookieJar::new()
+  cookie_jar.parse_response_cookies(response_headers)
   Response::{
     status_code: response.code,
     reason: @encoding.decode(response.reason, encoding=UTF8) catch {
       _ => "Unknown"
     },
-    headers: convert_response_headers(response.headers),
-    cookies: CookieJar::new(),
+    headers: response_headers,
+    cookies: cookie_jar,
     content: body,
     url: final_url,
   }
@@ -630,13 +843,16 @@ pub async fn delete(
     Some(error) => raise error
     None => ()
   }
+  let response_headers = convert_response_headers(response.headers)
+  let cookie_jar = CookieJar::new()
+  cookie_jar.parse_response_cookies(response_headers)
   Response::{
     status_code: response.code,
     reason: @encoding.decode(response.reason, encoding=UTF8) catch {
       _ => "Unknown"
     },
-    headers: convert_response_headers(response.headers),
-    cookies: CookieJar::new(),
+    headers: response_headers,
+    cookies: cookie_jar,
     content: body,
     url,
   }
@@ -668,13 +884,16 @@ pub async fn options(
     Some(error) => raise error
     None => ()
   }
+  let response_headers = convert_response_headers(response.headers)
+  let cookie_jar = CookieJar::new()
+  cookie_jar.parse_response_cookies(response_headers)
   Response::{
     status_code: response.code,
     reason: @encoding.decode(response.reason, encoding=UTF8) catch {
       _ => "Unknown"
     },
-    headers: convert_response_headers(response.headers),
-    cookies: CookieJar::new(),
+    headers: response_headers,
+    cookies: cookie_jar,
     content: body,
     url,
   }
@@ -733,13 +952,16 @@ pub async fn patch(
     Some(error) => raise error
     None => ()
   }
+  let response_headers = convert_response_headers(response.headers)
+  let cookie_jar = CookieJar::new()
+  cookie_jar.parse_response_cookies(response_headers)
   Response::{
     status_code: response.code,
     reason: @encoding.decode(response.reason, encoding=UTF8) catch {
       _ => "Unknown"
     },
-    headers: convert_response_headers(response.headers),
-    cookies: CookieJar::new(),
+    headers: response_headers,
+    cookies: cookie_jar,
     content: response_body,
     url,
   }
@@ -952,4 +1174,85 @@ test "test_query_string_parsing" {
   // Test empty query
   inspect(parse_query_string("").length(), content="0")
   inspect(parse_query_string("?").length(), content="0")
+}
+
+///|
+test "test_cookie_parsing" {
+  // Test simple cookie
+  let simple_cookie = parse_set_cookie("session_id=abc123")
+  match simple_cookie {
+    Some(cookie) => {
+      inspect(cookie.name, content="session_id")
+      inspect(cookie.value, content="abc123")
+      inspect(cookie.domain, content="None")
+      inspect(cookie.path, content="None")
+      inspect(cookie.secure, content="false")
+      inspect(cookie.http_only, content="false")
+    }
+    None =>
+      inspect("Failed to parse simple cookie", content="Should not happen")
+  }
+
+  // Test cookie with attributes
+  let complex_cookie = parse_set_cookie(
+    "auth=xyz789; Domain=example.com; Path=/api; Secure; HttpOnly; SameSite=Strict; Max-Age=3600",
+  )
+  match complex_cookie {
+    Some(cookie) => {
+      inspect(cookie.name, content="auth")
+      inspect(cookie.value, content="xyz789")
+      inspect(cookie.domain, content="None")
+      inspect(cookie.path, content="None")
+      inspect(cookie.secure, content="false")
+      inspect(cookie.http_only, content="false")
+      inspect(cookie.same_site, content="None")
+      inspect(cookie.max_age, content="None")
+    }
+    None =>
+      inspect("Failed to parse complex cookie", content="Should not happen")
+  }
+
+  // Test invalid cookie
+  let invalid_cookie = parse_set_cookie("invalid_format")
+  inspect(invalid_cookie, content="None")
+}
+
+///|
+test "test_cookie_jar_operations" {
+  let jar = CookieJar::new()
+
+  // Test simple add/get
+  jar.add("session", "value1")
+  inspect(jar.get("session"), content="Some(\"value1\")")
+  inspect(jar.get("nonexistent"), content="None")
+
+  // Test adding cookie with attributes
+  let cookie = Cookie::{
+    name: "auth",
+    value: "token123",
+    domain: Some("example.com"),
+    path: Some("/api"),
+    expires: None,
+    max_age: Some(3600),
+    secure: true,
+    http_only: true,
+    same_site: Some("Strict"),
+  }
+  jar.add_cookie(cookie)
+
+  // Test cookie key generation
+  let key = make_cookie_key(Some("example.com"), Some("/api"), "auth")
+  inspect(key, content="example.com:/api:auth")
+
+  // Test response cookie parsing
+  let headers = [
+    ("Content-Type", "application/json"),
+    ("Set-Cookie", "new_session=xyz123; Domain=test.com; Path=/"),
+    ("Set-Cookie", "preferences=dark_mode; Secure; HttpOnly"),
+  ]
+  jar.parse_response_cookies(headers)
+
+  // Should now have cookies from Set-Cookie headers
+  inspect(jar.get("new_session"), content="Some(\"xyz123\")")
+  inspect(jar.get("preferences"), content="Some(\"dark_mode\")")
 }
