@@ -3,6 +3,6 @@
     "moonbitlang/async",
     "moonbitlang/async/http",
     "moonbitlang/async/fs",
-    "tonyfettes/encoding"
+    "tonyfettes/encoding"    
   ] 
 }
