@@ -17,13 +17,18 @@ fn main {
 
       // GET with query parameters
       println("\n📡 2. GET with Query Parameters")
-      let params = [("lang", "moonbit"), ("version", "0.1")]
+      let params = [
+        ("lang", "moonbit"),
+        ("version", "0.1"),
+        ("special", "hello world!@#"),
+      ]
       let param_response = @allwefantasy/requests.get(
         "https://httpbin.org/get",
         Some(params),
         None,
       )
       println("   Status: \{param_response.status_code}")
+      println("   URL parameters properly encoded for special characters")
 
       // POST with JSON
       println("\n📡 3. POST with JSON Data")

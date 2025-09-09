@@ -215,10 +215,13 @@ fn encode_form_data(data : Array[(String, String)]) -> Bytes {
 }
 
 ///|
+/// URL encode a string according to RFC 3986
+/// Encodes all characters except unreserved characters: A-Z a-z 0-9 - . _ ~
 fn url_encode(s : String) -> String {
   let buf = StringBuilder::new()
-  for ch in s {
-    let code = ch.to_int()
+  let bytes = @encoding.encode(s, encoding=UTF8)
+  for byte in bytes {
+    let code = byte.to_int()
     if (code >= 'A'.to_int() && code <= 'Z'.to_int()) ||
       (code >= 'a'.to_int() && code <= 'z'.to_int()) ||
       (code >= '0'.to_int() && code <= '9'.to_int()) ||
@@ -226,7 +229,7 @@ fn url_encode(s : String) -> String {
       code == '.'.to_int() ||
       code == '_'.to_int() ||
       code == '~'.to_int() {
-      buf.write_char(ch)
+      buf.write_char(code.to_char().unwrap_or(' '))
     } else {
       // Percent encoding
       let high = (code >> 4) & 0xF
@@ -249,6 +252,57 @@ fn hex_char(n : Int) -> Char {
 }
 
 ///|
+/// URL decode a string
+/// Decodes percent-encoded characters back to their original form
+fn url_decode(s : String) -> String {
+  let bytes = Array::new()
+  let mut i = 0
+  while i < s.length() {
+    let ch_code = s.unsafe_charcode_at(i)
+    if ch_code == '%'.to_int() && i + 2 < s.length() {
+      // Decode percent-encoded character
+      let high_ch_code = s.unsafe_charcode_at(i + 1)
+      let low_ch_code = s.unsafe_charcode_at(i + 2)
+      let high = hex_to_int(high_ch_code)
+      let low = hex_to_int(low_ch_code)
+      if high >= 0 && low >= 0 {
+        let decoded_byte = (high << 4) | low
+        bytes.push(decoded_byte.to_byte())
+        i = i + 3
+      } else {
+        // Invalid hex, treat as literal
+        bytes.push(ch_code.to_byte())
+        i = i + 1
+      }
+    } else if ch_code == '+'.to_int() {
+      // Convert + to space (for form data)
+      bytes.push(' '.to_int().to_byte())
+      i = i + 1
+    } else {
+      bytes.push(ch_code.to_byte())
+      i = i + 1
+    }
+  }
+  @encoding.decode(Bytes::from_array(bytes), encoding=UTF8) catch {
+    _ => s // Return original string if decoding fails
+  }
+}
+
+///|
+/// Convert a hex character to its integer value
+fn hex_to_int(ch : Int) -> Int {
+  if ch >= '0'.to_int() && ch <= '9'.to_int() {
+    ch - '0'.to_int()
+  } else if ch >= 'A'.to_int() && ch <= 'F'.to_int() {
+    ch - 'A'.to_int() + 10
+  } else if ch >= 'a'.to_int() && ch <= 'f'.to_int() {
+    ch - 'a'.to_int() + 10
+  } else {
+    -1 // Invalid hex character
+  }
+}
+
+///|
 fn request_add_params(url : String, params : Array[(String, String)]) -> String {
   if params.is_empty() {
     return url
@@ -259,6 +313,49 @@ fn request_add_params(url : String, params : Array[(String, String)]) -> String 
     url_encode(key) + "=" + url_encode(value)
   })
   url + separator + query_parts.join("&")
+}
+
+///|
+/// Enhanced query parameter builder that supports multiple values for the same key
+/// Similar to Python requests' params handling
+fn build_query_string(params : Array[(String, String)]) -> String {
+  if params.is_empty() {
+    return ""
+  }
+  params
+  .map(fn(key_value) {
+    let (key, value) = key_value
+    url_encode(key) + "=" + url_encode(value)
+  })
+  .join("&")
+}
+
+///|
+/// Parse query string into key-value pairs  
+fn parse_query_string(query : String) -> Array[(String, String)] {
+  if query.is_empty() {
+    return []
+  }
+  let query_without_leading_q = if query.strip_prefix("?") != None {
+    query.substring(start=1)
+  } else {
+    query
+  }
+  if query_without_leading_q.is_empty() {
+    return []
+  }
+  let pairs = query_without_leading_q.split("&").to_array()
+  pairs.map(fn(pair) {
+    let pair_str = pair.to_string()
+    match pair_str.find("=") {
+      Some(i) => {
+        let key = pair_str.substring(start=0, end=i)
+        let value = pair_str.substring(start=i + 1)
+        (url_decode(key), url_decode(value))
+      }
+      None => (url_decode(pair_str), "")
+    }
+  })
 }
 
 ///|
@@ -625,4 +722,53 @@ fn merge_session_headers(
     Some(req_headers) => base + req_headers
     None => base
   }
+}
+
+///|
+/// Test URL encoding and decoding functions
+test "test_url_encoding" {
+  // Test basic ASCII encoding
+  inspect(url_encode("hello world"), content="hello%20world")
+  inspect(url_encode("key=value&foo=bar"), content="key%3Dvalue%26foo%3Dbar")
+
+  // Test unreserved characters (should not be encoded)
+  inspect(url_encode("ABCabc123-._~"), content="ABCabc123-._~")
+
+  // Test Unicode encoding
+  inspect(url_encode("测试"), content="%E6%B5%8B%E8%AF%95")
+}
+
+///|
+test "test_url_decoding" {
+  // Test basic decoding
+  inspect(url_decode("hello%20world"), content="hello world")
+  inspect(url_decode("key%3Dvalue%26foo%3Dbar"), content="key=value&foo=bar")
+
+  // Test plus to space conversion
+  inspect(url_decode("hello+world"), content="hello world")
+
+  // Test Unicode decoding
+  inspect(url_decode("%E6%B5%8B%E8%AF%95"), content="测试")
+
+  // Test invalid percent encoding (should remain as-is)
+  inspect(url_decode("hello%ZZ"), content="hello%ZZ")
+}
+
+///|
+test "test_query_string_parsing" {
+  let params = parse_query_string("?key1=value1&key2=value%202&key3=")
+  inspect(params.length(), content="3")
+  let (key0, value0) = params[0]
+  let (key1, value1) = params[1]
+  let (key2, value2) = params[2]
+  inspect(key0, content="key1")
+  inspect(value0, content="value1")
+  inspect(key1, content="key2")
+  inspect(value1, content="value 2")
+  inspect(key2, content="key3")
+  inspect(value2, content="")
+
+  // Test empty query
+  inspect(parse_query_string("").length(), content="0")
+  inspect(parse_query_string("?").length(), content="0")
 }
