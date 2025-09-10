@@ -28,50 +28,8 @@ pub fn Auth::to_header(self : Auth) -> (String, String) {
 ///|
 /// Simple Base64 encoding for Basic Auth
 fn base64_encode(input : String) -> String {
-  let chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-  let input_bytes = @encoding.encode(input, encoding=UTF8)
-  let buf = StringBuilder::new()
-  let mut i = 0
-  while i < input_bytes.length() {
-    let b1 = input_bytes[i].to_int()
-    let b2 = if i + 1 < input_bytes.length() {
-      input_bytes[i + 1].to_int()
-    } else {
-      0
-    }
-    let b3 = if i + 2 < input_bytes.length() {
-      input_bytes[i + 2].to_int()
-    } else {
-      0
-    }
-    let combined = (b1 << 16) | (b2 << 8) | b3
-    let idx1 = (combined >> 18) & 63
-    let idx2 = (combined >> 12) & 63
-    buf.write_char(
-      chars.get(idx1).unwrap_or('A'.to_int()).to_char().unwrap_or('A'),
-    )
-    buf.write_char(
-      chars.get(idx2).unwrap_or('A'.to_int()).to_char().unwrap_or('A'),
-    )
-    if i + 1 < input_bytes.length() {
-      let idx3 = (combined >> 6) & 63
-      buf.write_char(
-        chars.get(idx3).unwrap_or('A'.to_int()).to_char().unwrap_or('A'),
-      )
-    } else {
-      buf.write_char('=')
-    }
-    if i + 2 < input_bytes.length() {
-      let idx4 = combined & 63
-      buf.write_char(
-        chars.get(idx4).unwrap_or('A'.to_int()).to_char().unwrap_or('A'),
-      )
-    } else {
-      buf.write_char('=')
-    }
-    i = i + 3
-  }
-  buf.to_string()
+  let input_array = @encoding.encode(input, encoding=UTF8).to_fixedarray()
+  @base64.std_encode2str(input_array)
 }
 
 ///|

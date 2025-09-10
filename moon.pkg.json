@@ -2,6 +2,7 @@
   "import": [
     "moonbitlang/async",
     "moonbitlang/async/http",
-    "tonyfettes/encoding"
+    "tonyfettes/encoding",
+    "gmlewis/base64"
   ]
 }

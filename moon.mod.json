@@ -3,13 +3,18 @@
   "version": "0.1.0",
   "deps": {
     "moonbitlang/async": "0.5.1",
-    "tonyfettes/encoding": "0.3.7"
+    "tonyfettes/encoding": "0.3.7",
+    "gmlewis/base64": "0.14.13"
   },
   "readme": "README.md",
   "repository": "",
   "license": "Apache-2.0",
-  "keywords": ["http", "requests", "client"],
+  "keywords": [
+    "http",
+    "requests",
+    "client"
+  ],
   "description": "A Python requests-like HTTP client library for MoonBit",
-  "preferred-target": "native",
-  "warn-list": "-0015"
+  "warn-list": "-0015",
+  "preferred-target": "native"
 }
