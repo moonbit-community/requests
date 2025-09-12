@@ -193,7 +193,7 @@ fn make_cookie_key(domain : String?, path : String?, name : String) -> String {
 
 ///|
 /// Helper function to convert string to lowercase
-fn lowercase_string(s : String) -> String {
+fn lowercase_string(s : StringView) -> String {
   let buf = StringBuilder::new()
   for i = 0; i < s.length(); i = i + 1 {
     let ch_code = s.unsafe_charcode_at(i)
@@ -257,8 +257,11 @@ pub fn parse_set_cookie(set_cookie_value : String) -> Cookie? {
     }
     match attr.find("=") {
       Some(eq_pos) => {
-        let attr_name_str = attr.substring(start=0, end=eq_pos)
-        let attr_value = attr.substring(start=eq_pos + 1)
+        let attr_name_str = attr.substring(start=0, end=eq_pos).trim_space()
+        let attr_value = attr
+          .substring(start=eq_pos + 1)
+          .trim_space()
+          .to_string()
         let attr_name = lowercase_string(attr_name_str)
         match attr_name {
           "domain" => domain = Some(attr_value)
@@ -294,7 +297,7 @@ pub fn parse_set_cookie(set_cookie_value : String) -> Cookie? {
       }
       None => {
         // Boolean attributes
-        let attr_lower = lowercase_string(attr)
+        let attr_lower = lowercase_string(attr.trim_space())
         match attr_lower {
           "secure" => secure = true
           "httponly" => http_only = true
@@ -334,7 +337,7 @@ pub fn CookieJar::parse_response_cookies(
 }
 
 ///|
-/// HTTP Response 
+/// HTTP Response
 pub struct Response {
   status_code : Int
   reason : String
@@ -575,7 +578,7 @@ fn is_unreserved_char(code : Int) -> Bool {
   // A-Z: 65-90, a-z: 97-122, 0-9: 48-57
   // Special chars: - (45), . (46), _ (95), ~ (126)
   (code >= 65 && code <= 90) || // A-Z
-  (code >= 97 && code <= 122) || // a-z  
+  (code >= 97 && code <= 122) || // a-z
   (code >= 48 && code <= 57) || // 0-9
   code == 45 || // -
   code == 46 || // .
@@ -714,7 +717,7 @@ fn request_add_params(url : String, params : Array[(String, String)]) -> String 
 }
 
 ///|
-/// Parse query string into key-value pairs  
+/// Parse query string into key-value pairs
 fn parse_query_string(query : String) -> Array[(String, String)] {
   if query.is_empty() {
     return []
@@ -1313,12 +1316,12 @@ test "test_cookie_parsing" {
     Some(cookie) => {
       inspect(cookie.name, content="auth")
       inspect(cookie.value, content="xyz789")
-      inspect(cookie.domain, content="None")
-      inspect(cookie.path, content="None")
-      inspect(cookie.secure, content="false")
-      inspect(cookie.http_only, content="false")
-      inspect(cookie.same_site, content="None")
-      inspect(cookie.max_age, content="None")
+      inspect(cookie.domain, content="Some(\"example.com\")")
+      inspect(cookie.path, content="Some(\"/api\")")
+      inspect(cookie.secure, content="true")
+      inspect(cookie.http_only, content="true")
+      inspect(cookie.same_site, content="Some(\"Strict\")")
+      inspect(cookie.max_age, content="Some(3600)")
     }
     None =>
       inspect("Failed to parse complex cookie", content="Should not happen")
