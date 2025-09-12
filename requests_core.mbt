@@ -334,7 +334,7 @@ pub fn CookieJar::parse_response_cookies(
 }
 
 ///|
-/// HTTP Response 
+/// HTTP Response
 pub struct Response {
   status_code : Int
   reason : String
@@ -575,7 +575,7 @@ fn is_unreserved_char(code : Int) -> Bool {
   // A-Z: 65-90, a-z: 97-122, 0-9: 48-57
   // Special chars: - (45), . (46), _ (95), ~ (126)
   (code >= 65 && code <= 90) || // A-Z
-  (code >= 97 && code <= 122) || // a-z  
+  (code >= 97 && code <= 122) || // a-z
   (code >= 48 && code <= 57) || // 0-9
   code == 45 || // -
   code == 46 || // .
@@ -693,13 +693,17 @@ fn request_add_params(url : String, params : Array[(String, String)]) -> String 
   if params.is_empty() {
     return url
   }
+  let (base_url, fragment) = match url.find("#") {
+    Some(i) => (url.substring(start=0, end=i), url.substring(start=i))
+    None => (url, "")
+  }
 
   // Use StringBuilder for better performance with multiple concatenations
   let buf = StringBuilder::new()
 
   // Note: StringBuilder::reserve is not available, so we skip pre-allocation
-  buf.write_string(url)
-  let separator = if url.contains("?") { "&" } else { "?" }
+  buf.write_string(base_url)
+  let separator = if base_url.contains("?") { "&" } else { "?" }
   buf.write_string(separator)
   for i = 0; i < params.length(); i = i + 1 {
     if i > 0 {
@@ -710,11 +714,12 @@ fn request_add_params(url : String, params : Array[(String, String)]) -> String 
     buf.write_string("=")
     buf.write_string(url_encode(value))
   }
+  buf.write_string(fragment)
   buf.to_string()
 }
 
 ///|
-/// Parse query string into key-value pairs  
+/// Parse query string into key-value pairs
 fn parse_query_string(query : String) -> Array[(String, String)] {
   if query.is_empty() {
     return []
@@ -1563,6 +1568,12 @@ test "test_request_add_params" {
   // Test empty params
   let url4 = request_add_params("http://example.com/api", [])
   inspect(url4, content="http://example.com/api")
+
+  // Test fragment preservation
+  let url5 = request_add_params("https://example.com/api#section", [
+    ("key", "value"),
+  ])
+  inspect(url5, content="https://example.com/api?key=value#section")
 }
 
 ///|
