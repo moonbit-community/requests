@@ -7,27 +7,56 @@
 ///|
 /// Helper function to categorize HTTP status codes into error types
 fn categorize_http_error(status_code : Int, url : String) -> RequestError? {
-  match status_code {
-    // Success codes
+   match status_code {
+    // ok
     code if code >= 200 && code < 300 => None
-    // Redirection codes (not errors in this context)
     code if code >= 300 && code < 400 => None
-    // Client errors
+    // client
     400 => Some(RequestError::HTTPError(status_code, "Bad Request", url))
     401 => Some(RequestError::HTTPError(status_code, "Unauthorized", url))
+    402 => Some(RequestError::HTTPError(status_code, "Payment Required", url))              // 预留
     403 => Some(RequestError::HTTPError(status_code, "Forbidden", url))
     404 => Some(RequestError::HTTPError(status_code, "Not Found", url))
+    405 => Some(RequestError::HTTPError(status_code, "Method Not Allowed", url))
+    406 => Some(RequestError::HTTPError(status_code, "Not Acceptable", url))
+    407 => Some(RequestError::HTTPError(status_code, "Proxy Authentication Required", url))
     408 => Some(RequestError::Timeout("Request timeout (HTTP 408)"))
+    409 => Some(RequestError::HTTPError(status_code, "Conflict", url))
+    410 => Some(RequestError::HTTPError(status_code, "Gone", url))
+    411 => Some(RequestError::HTTPError(status_code, "Length Required", url))
+    412 => Some(RequestError::HTTPError(status_code, "Precondition Failed", url))
+    413 => Some(RequestError::HTTPError(status_code, "Payload Too Large", url))
+    414 => Some(RequestError::HTTPError(status_code, "URI Too Long", url))
+    415 => Some(RequestError::HTTPError(status_code, "Unsupported Media Type", url))
+    416 => Some(RequestError::HTTPError(status_code, "Range Not Satisfiable", url))
+    417 => Some(RequestError::HTTPError(status_code, "Expectation Failed", url))
+    418 => Some(RequestError::HTTPError(status_code, "I'm a teapot", url))                  // 彩蛋
+    421 => Some(RequestError::HTTPError(status_code, "Misdirected Request", url))
+    422 => Some(RequestError::HTTPError(status_code, "Unprocessable Content", url))         // RFC 9110 用语
+    423 => Some(RequestError::HTTPError(status_code, "Locked", url))
+    424 => Some(RequestError::HTTPError(status_code, "Failed Dependency", url))
+    425 => Some(RequestError::HTTPError(status_code, "Too Early", url))
+    426 => Some(RequestError::HTTPError(status_code, "Upgrade Required", url))
+    428 => Some(RequestError::HTTPError(status_code, "Precondition Required", url))
     429 => Some(RequestError::HTTPError(status_code, "Too Many Requests", url))
-    // Server errors
-    500 =>
-      Some(RequestError::HTTPError(status_code, "Internal Server Error", url))
+    431 => Some(RequestError::HTTPError(status_code, "Request Header Fields Too Large", url))
+    451 => Some(RequestError::HTTPError(status_code, "Unavailable For Legal Reasons", url))
+
+    // server/gateway
+    500 => Some(RequestError::HTTPError(status_code, "Internal Server Error", url))
+    501 => Some(RequestError::HTTPError(status_code, "Not Implemented", url))
     502 => Some(RequestError::HTTPError(status_code, "Bad Gateway", url))
-    503 =>
-      Some(RequestError::HTTPError(status_code, "Service Unavailable", url))
+    503 => Some(RequestError::HTTPError(status_code, "Service Unavailable", url))
     504 => Some(RequestError::Timeout("Gateway timeout (HTTP 504)"))
-    // Generic error for other codes
-    code if code >= 400 =>
+    505 => Some(RequestError::HTTPError(status_code, "HTTP Version Not Supported", url))
+    506 => Some(RequestError::HTTPError(status_code, "Variant Also Negotiates", url))
+    507 => Some(RequestError::HTTPError(status_code, "Insufficient Storage", url))
+    508 => Some(RequestError::HTTPError(status_code, "Loop Detected", url))
+    510 => Some(RequestError::HTTPError(status_code, "Not Extended", url))
+    511 => Some(RequestError::HTTPError(status_code, "Network Authentication Required", url))
+
+    // other code
+    code if code >= 400 && code < 600 =>
       Some(RequestError::HTTPError(status_code, "HTTP Error", url))
     _ => None
   }
@@ -413,12 +442,7 @@ pub async fn get(
         "Failed to perform GET request: " + err.to_string(),
       )
   }
-
-  // Check for HTTP errors and categorize them
-  match categorize_http_error(response.code, final_url) {
-    Some(error) => raise error
-    None => ()
-  }
+  
   let response_headers = convert_response_headers(response.headers)
   let cookie_jar = CookieJar::new()
   cookie_jar.parse_response_cookies(response_headers)
@@ -909,11 +933,6 @@ pub async fn head(
     timeout_ms~,
   )
 
-  // Check for HTTP errors and categorize them
-  match categorize_http_error(response.code, final_url) {
-    Some(error) => raise error
-    None => ()
-  }
   let response_headers = convert_response_headers(response.headers)
   let cookie_jar = CookieJar::new()
   cookie_jar.parse_response_cookies(response_headers)
