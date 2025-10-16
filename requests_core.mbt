@@ -192,22 +192,6 @@ fn make_cookie_key(domain : String?, path : String?, name : String) -> String {
 }
 
 ///|
-/// Helper function to convert string to lowercase
-fn lowercase_string(s : StringView) -> String {
-  let buf = StringBuilder::new()
-  for i = 0; i < s.length(); i = i + 1 {
-    let ch_code = s.unsafe_charcode_at(i)
-    let lower_ch_code = if ch_code >= 'A'.to_int() && ch_code <= 'Z'.to_int() {
-      ch_code + 32
-    } else {
-      ch_code
-    }
-    buf.write_char(lower_ch_code.unsafe_to_char())
-  }
-  buf.to_string()
-}
-
-///|
 /// Initialize a CookieJar with some default cookies for testing
 pub fn CookieJar::with_defaults() -> CookieJar {
   let jar = CookieJar::new()
@@ -262,7 +246,7 @@ pub fn parse_set_cookie(set_cookie_value : String) -> Cookie? {
           .substring(start=eq_pos + 1)
           .trim_space()
           .to_string()
-        let attr_name = lowercase_string(attr_name_str)
+        let attr_name = attr_name_str.to_lower()
         match attr_name {
           "domain" => domain = Some(attr_value)
           "path" => path = Some(attr_value)
@@ -297,7 +281,7 @@ pub fn parse_set_cookie(set_cookie_value : String) -> Cookie? {
       }
       None => {
         // Boolean attributes
-        let attr_lower = lowercase_string(attr.trim_space())
+        let attr_lower = attr.trim_space().to_lower()
         match attr_lower {
           "secure" => secure = true
           "httponly" => http_only = true
@@ -327,7 +311,7 @@ pub fn CookieJar::parse_response_cookies(
 ) -> Unit {
   for header in headers {
     let (name, value) = header
-    if lowercase_string(name) == "set-cookie" {
+    if name.to_lower() == "set-cookie" {
       match parse_set_cookie(value) {
         Some(cookie) => self.add_cookie(cookie)
         None => continue // Invalid cookie, skip
@@ -396,7 +380,7 @@ pub async fn get(
   params : Array[(String, String)]?,
   headers : Array[(String, String)]?,
   timeout_ms? : Int? = None,
-) -> Response raise {
+) -> Response {
   validate_url(url)
   let final_url = match params {
     Some(p) => request_add_params(url, p)
@@ -445,7 +429,7 @@ pub async fn post(
   json : Json?,
   headers : Array[(String, String)]?,
   timeout_ms? : Int? = None,
-) -> Response raise {
+) -> Response {
   validate_url(url)
   let url_bytes = @encoding.encode(url, encoding=UTF8)
   let base_headers = match headers {
@@ -757,7 +741,7 @@ pub async fn put(
   json : Json?,
   headers : Array[(String, String)]?,
   timeout_ms? : Int? = None,
-) -> Response raise {
+) -> Response {
   validate_url(url)
   let url_bytes = @encoding.encode(url, encoding=UTF8)
   let base_headers = match headers {
@@ -845,7 +829,7 @@ pub async fn Session::get(
   params : Array[(String, String)]?,
   headers : Array[(String, String)]?,
   timeout_ms? : Int? = None,
-) -> Response raise {
+) -> Response {
   let merged_headers = merge_session_headers(self.headers, headers)
   let final_timeout = match timeout_ms {
     Some(t) => Some(t)
@@ -863,7 +847,7 @@ pub async fn Session::post(
   json : Json?,
   headers : Array[(String, String)]?,
   timeout_ms? : Int? = None,
-) -> Response raise {
+) -> Response {
   let merged_headers = merge_session_headers(self.headers, headers)
   let final_timeout = match timeout_ms {
     Some(t) => Some(t)
@@ -881,7 +865,7 @@ pub async fn Session::put(
   json : Json?,
   headers : Array[(String, String)]?,
   timeout_ms? : Int? = None,
-) -> Response raise {
+) -> Response {
   let merged_headers = merge_session_headers(self.headers, headers)
   let final_timeout = match timeout_ms {
     Some(t) => Some(t)
@@ -897,7 +881,7 @@ pub async fn head(
   params : Array[(String, String)]?,
   headers : Array[(String, String)]?,
   timeout_ms? : Int? = None,
-) -> Response raise {
+) -> Response {
   validate_url(url)
   let final_url = match params {
     Some(p) => request_add_params(url, p)
@@ -943,7 +927,7 @@ pub async fn delete(
   url : String,
   headers : Array[(String, String)]?,
   timeout_ms? : Int? = None,
-) -> Response raise {
+) -> Response {
   validate_url(url)
   let url_bytes = @encoding.encode(url, encoding=UTF8)
   let http_headers = match headers {
@@ -984,7 +968,7 @@ pub async fn options(
   url : String,
   headers : Array[(String, String)]?,
   timeout_ms? : Int? = None,
-) -> Response raise {
+) -> Response {
   validate_url(url)
   let url_bytes = @encoding.encode(url, encoding=UTF8)
   let http_headers = match headers {
@@ -1027,7 +1011,7 @@ pub async fn patch(
   json : Json?,
   headers : Array[(String, String)]?,
   timeout_ms? : Int? = None,
-) -> Response raise {
+) -> Response {
   validate_url(url)
   let url_bytes = @encoding.encode(url, encoding=UTF8)
   let base_headers = match headers {
@@ -1095,7 +1079,7 @@ async fn perform_request_method(
   headers : Array[@http.Header],
   body : @http.Body,
   timeout_ms? : Int? = None,
-) -> (@http.Response, Bytes) raise {
+) -> (@http.Response, Bytes) {
   // Parse URI to extract protocol, host, path
   guard uri.find(b"://") is Some(protocol_len) else {
     raise RequestError::URLError(
@@ -1175,7 +1159,7 @@ pub async fn Session::head(
   params : Array[(String, String)]?,
   headers : Array[(String, String)]?,
   timeout_ms? : Int? = None,
-) -> Response raise {
+) -> Response {
   let merged_headers = merge_session_headers(self.headers, headers)
   let final_timeout = match timeout_ms {
     Some(t) => Some(t)
@@ -1191,7 +1175,7 @@ pub async fn Session::delete(
   url : String,
   headers : Array[(String, String)]?,
   timeout_ms? : Int? = None,
-) -> Response raise {
+) -> Response {
   let merged_headers = merge_session_headers(self.headers, headers)
   let final_timeout = match timeout_ms {
     Some(t) => Some(t)
@@ -1207,7 +1191,7 @@ pub async fn Session::options(
   url : String,
   headers : Array[(String, String)]?,
   timeout_ms? : Int? = None,
-) -> Response raise {
+) -> Response {
   let merged_headers = merge_session_headers(self.headers, headers)
   let final_timeout = match timeout_ms {
     Some(t) => Some(t)
@@ -1225,7 +1209,7 @@ pub async fn Session::patch(
   json : Json?,
   headers : Array[(String, String)]?,
   timeout_ms? : Int? = None,
-) -> Response raise {
+) -> Response {
   let merged_headers = merge_session_headers(self.headers, headers)
   let final_timeout = match timeout_ms {
     Some(t) => Some(t)
@@ -1449,16 +1433,6 @@ test "test_url_validation" {
         content="Should be URLError",
       )
   }
-}
-
-///|
-test "test_lowercase_string" {
-  inspect(lowercase_string("HELLO"), content="hello")
-  inspect(lowercase_string("Mixed Case"), content="mixed case")
-  inspect(lowercase_string("already lowercase"), content="already lowercase")
-  inspect(lowercase_string("123ABC"), content="123abc")
-  inspect(lowercase_string(""), content="")
-  inspect(lowercase_string("àáâãäå"), content="àáâãäå") // Non-ASCII should remain unchanged
 }
 
 ///|
