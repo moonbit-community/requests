@@ -114,8 +114,22 @@ fn main {
           println("   SSL error: \{msg}")
         @allwefantasy/requests.RequestError::ContentDecodingError(msg) =>
           println("   Content decoding error: \{msg}")
-        _ => println("   Other error occurred")
       }
+
+      println("\n🍵 8.1 418 I'm a teapot")
+      let teapot = @allwefantasy/requests.get(
+        "https://httpbin.org/status/418",
+        None,
+        None,
+      )
+      println("   Status: \{teapot.status_code} \{teapot.reason}")
+      println("   OK?: \{teapot.ok()}")
+
+      let tea_body = teapot.text()
+      let preview =
+        if tea_body.length() > 200 { tea_body.substring(start=0, end=200) + "..." }
+        else { tea_body }
+      println("   Body preview:\n\{preview}")
 
       // Test URL validation and new error types
       println("\n🛠️ 10. Enhanced Error Handling Test")
