@@ -696,13 +696,17 @@ fn request_add_params(url : String, params : Array[(String, String)]) -> String 
   if params.is_empty() {
     return url
   }
+  let (base_url, fragment) = match url.find("#") {
+    Some(i) => (url.substring(start=0, end=i), url.substring(start=i))
+    None => (url, "")
+  }
 
   // Use StringBuilder for better performance with multiple concatenations
   let buf = StringBuilder::new()
 
   // Note: StringBuilder::reserve is not available, so we skip pre-allocation
-  buf.write_string(url)
-  let separator = if url.contains("?") { "&" } else { "?" }
+  buf.write_string(base_url)
+  let separator = if base_url.contains("?") { "&" } else { "?" }
   buf.write_string(separator)
   for i = 0; i < params.length(); i = i + 1 {
     if i > 0 {
@@ -713,6 +717,7 @@ fn request_add_params(url : String, params : Array[(String, String)]) -> String 
     buf.write_string("=")
     buf.write_string(url_encode(value))
   }
+  buf.write_string(fragment)
   buf.to_string()
 }
 
@@ -1566,6 +1571,12 @@ test "test_request_add_params" {
   // Test empty params
   let url4 = request_add_params("http://example.com/api", [])
   inspect(url4, content="http://example.com/api")
+
+  // Test fragment preservation
+  let url5 = request_add_params("https://example.com/api#section", [
+    ("key", "value"),
+  ])
+  inspect(url5, content="https://example.com/api?key=value#section")
 }
 
 ///|
