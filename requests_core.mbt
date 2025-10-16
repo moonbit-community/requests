@@ -241,8 +241,11 @@ pub fn parse_set_cookie(set_cookie_value : String) -> Cookie? {
     }
     match attr.find("=") {
       Some(eq_pos) => {
-        let attr_name_str = attr.substring(start=0, end=eq_pos)
-        let attr_value = attr.substring(start=eq_pos + 1)
+        let attr_name_str = attr.substring(start=0, end=eq_pos).trim_space()
+        let attr_value = attr
+          .substring(start=eq_pos + 1)
+          .trim_space()
+          .to_string()
         let attr_name = attr_name_str.to_lower()
         match attr_name {
           "domain" => domain = Some(attr_value)
@@ -278,7 +281,7 @@ pub fn parse_set_cookie(set_cookie_value : String) -> Cookie? {
       }
       None => {
         // Boolean attributes
-        let attr_lower = attr.to_lower()
+        let attr_lower = attr.trim_space().to_lower()
         match attr_lower {
           "secure" => secure = true
           "httponly" => http_only = true
@@ -318,7 +321,7 @@ pub fn CookieJar::parse_response_cookies(
 }
 
 ///|
-/// HTTP Response 
+/// HTTP Response
 pub struct Response {
   status_code : Int
   reason : String
@@ -377,7 +380,7 @@ pub async fn get(
   params : Array[(String, String)]?,
   headers : Array[(String, String)]?,
   timeout_ms? : Int? = None,
-) -> Response raise {
+) -> Response {
   validate_url(url)
   let final_url = match params {
     Some(p) => request_add_params(url, p)
@@ -426,7 +429,7 @@ pub async fn post(
   json : Json?,
   headers : Array[(String, String)]?,
   timeout_ms? : Int? = None,
-) -> Response raise {
+) -> Response {
   validate_url(url)
   let url_bytes = @encoding.encode(url, encoding=UTF8)
   let base_headers = match headers {
@@ -559,7 +562,7 @@ fn is_unreserved_char(code : Int) -> Bool {
   // A-Z: 65-90, a-z: 97-122, 0-9: 48-57
   // Special chars: - (45), . (46), _ (95), ~ (126)
   (code >= 65 && code <= 90) || // A-Z
-  (code >= 97 && code <= 122) || // a-z  
+  (code >= 97 && code <= 122) || // a-z
   (code >= 48 && code <= 57) || // 0-9
   code == 45 || // -
   code == 46 || // .
@@ -677,13 +680,17 @@ fn request_add_params(url : String, params : Array[(String, String)]) -> String 
   if params.is_empty() {
     return url
   }
+  let (base_url, fragment) = match url.find("#") {
+    Some(i) => (url.substring(start=0, end=i), url.substring(start=i))
+    None => (url, "")
+  }
 
   // Use StringBuilder for better performance with multiple concatenations
   let buf = StringBuilder::new()
 
   // Note: StringBuilder::reserve is not available, so we skip pre-allocation
-  buf.write_string(url)
-  let separator = if url.contains("?") { "&" } else { "?" }
+  buf.write_string(base_url)
+  let separator = if base_url.contains("?") { "&" } else { "?" }
   buf.write_string(separator)
   for i = 0; i < params.length(); i = i + 1 {
     if i > 0 {
@@ -694,11 +701,12 @@ fn request_add_params(url : String, params : Array[(String, String)]) -> String 
     buf.write_string("=")
     buf.write_string(url_encode(value))
   }
+  buf.write_string(fragment)
   buf.to_string()
 }
 
 ///|
-/// Parse query string into key-value pairs  
+/// Parse query string into key-value pairs
 fn parse_query_string(query : String) -> Array[(String, String)] {
   if query.is_empty() {
     return []
@@ -733,7 +741,7 @@ pub async fn put(
   json : Json?,
   headers : Array[(String, String)]?,
   timeout_ms? : Int? = None,
-) -> Response raise {
+) -> Response {
   validate_url(url)
   let url_bytes = @encoding.encode(url, encoding=UTF8)
   let base_headers = match headers {
@@ -821,7 +829,7 @@ pub async fn Session::get(
   params : Array[(String, String)]?,
   headers : Array[(String, String)]?,
   timeout_ms? : Int? = None,
-) -> Response raise {
+) -> Response {
   let merged_headers = merge_session_headers(self.headers, headers)
   let final_timeout = match timeout_ms {
     Some(t) => Some(t)
@@ -839,7 +847,7 @@ pub async fn Session::post(
   json : Json?,
   headers : Array[(String, String)]?,
   timeout_ms? : Int? = None,
-) -> Response raise {
+) -> Response {
   let merged_headers = merge_session_headers(self.headers, headers)
   let final_timeout = match timeout_ms {
     Some(t) => Some(t)
@@ -857,7 +865,7 @@ pub async fn Session::put(
   json : Json?,
   headers : Array[(String, String)]?,
   timeout_ms? : Int? = None,
-) -> Response raise {
+) -> Response {
   let merged_headers = merge_session_headers(self.headers, headers)
   let final_timeout = match timeout_ms {
     Some(t) => Some(t)
@@ -873,7 +881,7 @@ pub async fn head(
   params : Array[(String, String)]?,
   headers : Array[(String, String)]?,
   timeout_ms? : Int? = None,
-) -> Response raise {
+) -> Response {
   validate_url(url)
   let final_url = match params {
     Some(p) => request_add_params(url, p)
@@ -919,7 +927,7 @@ pub async fn delete(
   url : String,
   headers : Array[(String, String)]?,
   timeout_ms? : Int? = None,
-) -> Response raise {
+) -> Response {
   validate_url(url)
   let url_bytes = @encoding.encode(url, encoding=UTF8)
   let http_headers = match headers {
@@ -960,7 +968,7 @@ pub async fn options(
   url : String,
   headers : Array[(String, String)]?,
   timeout_ms? : Int? = None,
-) -> Response raise {
+) -> Response {
   validate_url(url)
   let url_bytes = @encoding.encode(url, encoding=UTF8)
   let http_headers = match headers {
@@ -1003,7 +1011,7 @@ pub async fn patch(
   json : Json?,
   headers : Array[(String, String)]?,
   timeout_ms? : Int? = None,
-) -> Response raise {
+) -> Response {
   validate_url(url)
   let url_bytes = @encoding.encode(url, encoding=UTF8)
   let base_headers = match headers {
@@ -1071,7 +1079,7 @@ async fn perform_request_method(
   headers : Array[@http.Header],
   body : @http.Body,
   timeout_ms? : Int? = None,
-) -> (@http.Response, Bytes) raise {
+) -> (@http.Response, Bytes) {
   // Parse URI to extract protocol, host, path
   guard uri.find(b"://") is Some(protocol_len) else {
     raise RequestError::URLError(
@@ -1151,7 +1159,7 @@ pub async fn Session::head(
   params : Array[(String, String)]?,
   headers : Array[(String, String)]?,
   timeout_ms? : Int? = None,
-) -> Response raise {
+) -> Response {
   let merged_headers = merge_session_headers(self.headers, headers)
   let final_timeout = match timeout_ms {
     Some(t) => Some(t)
@@ -1167,7 +1175,7 @@ pub async fn Session::delete(
   url : String,
   headers : Array[(String, String)]?,
   timeout_ms? : Int? = None,
-) -> Response raise {
+) -> Response {
   let merged_headers = merge_session_headers(self.headers, headers)
   let final_timeout = match timeout_ms {
     Some(t) => Some(t)
@@ -1183,7 +1191,7 @@ pub async fn Session::options(
   url : String,
   headers : Array[(String, String)]?,
   timeout_ms? : Int? = None,
-) -> Response raise {
+) -> Response {
   let merged_headers = merge_session_headers(self.headers, headers)
   let final_timeout = match timeout_ms {
     Some(t) => Some(t)
@@ -1201,7 +1209,7 @@ pub async fn Session::patch(
   json : Json?,
   headers : Array[(String, String)]?,
   timeout_ms? : Int? = None,
-) -> Response raise {
+) -> Response {
   let merged_headers = merge_session_headers(self.headers, headers)
   let final_timeout = match timeout_ms {
     Some(t) => Some(t)
@@ -1297,12 +1305,12 @@ test "test_cookie_parsing" {
     Some(cookie) => {
       inspect(cookie.name, content="auth")
       inspect(cookie.value, content="xyz789")
-      inspect(cookie.domain, content="None")
-      inspect(cookie.path, content="None")
-      inspect(cookie.secure, content="false")
-      inspect(cookie.http_only, content="false")
-      inspect(cookie.same_site, content="None")
-      inspect(cookie.max_age, content="None")
+      inspect(cookie.domain, content="Some(\"example.com\")")
+      inspect(cookie.path, content="Some(\"/api\")")
+      inspect(cookie.secure, content="true")
+      inspect(cookie.http_only, content="true")
+      inspect(cookie.same_site, content="Some(\"Strict\")")
+      inspect(cookie.max_age, content="Some(3600)")
     }
     None =>
       inspect("Failed to parse complex cookie", content="Should not happen")
@@ -1537,6 +1545,12 @@ test "test_request_add_params" {
   // Test empty params
   let url4 = request_add_params("http://example.com/api", [])
   inspect(url4, content="http://example.com/api")
+
+  // Test fragment preservation
+  let url5 = request_add_params("https://example.com/api#section", [
+    ("key", "value"),
+  ])
+  inspect(url5, content="https://example.com/api?key=value#section")
 }
 
 ///|
